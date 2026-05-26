@@ -1,48 +1,42 @@
 from __future__ import annotations
 
-import csv
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
+
+import pandas as pd
 
 
-def ensure_parent(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-
-def read_jsonl(path: Path) -> list[dict[str, Any]]:
+def read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    rows: list[dict[str, Any]] = []
+    records: list[dict] = []
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
-            stripped = line.strip()
-            if stripped:
-                rows.append(json.loads(stripped))
-    return rows
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return records
 
 
-def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
-    ensure_parent(path)
-    with path.open("w", encoding="utf-8") as handle:
+def write_jsonl(path: Path, records: Iterable[dict], append: bool = False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if append else "w"
+    with path.open(mode, encoding="utf-8") as handle:
         for record in records:
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
 
 
-def append_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
-    ensure_parent(path)
-    with path.open("a", encoding="utf-8") as handle:
-        for record in records:
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
+def read_records(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    if path.suffix.lower() == ".jsonl":
+        return read_jsonl(path)
+    if path.suffix.lower() == ".csv":
+        return pd.read_csv(path).to_dict(orient="records")
+    raise ValueError(f"Unsupported file format: {path}")
 
 
-def write_csv(path: Path, records: list[dict[str, Any]]) -> None:
-    ensure_parent(path)
-    if not records:
-        path.write_text("", encoding="utf-8")
-        return
-    fieldnames = sorted({key for record in records for key in record.keys()})
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(records)
+def dataframe_to_csv(path: Path, records: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(records).to_csv(path, index=False)

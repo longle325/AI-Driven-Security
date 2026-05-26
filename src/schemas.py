@@ -1,46 +1,58 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
+THREAT_TYPES = ["normal", "port_scan", "brute_force", "web_attack", "traffic_spike"]
 
-ThreatLabel = Literal["normal", "port_scan", "brute_force", "web_attack", "traffic_spike"]
+FEATURE_COLUMNS = [
+    "request_count_1m",
+    "failed_login_count_5m",
+    "unique_ports_1m",
+    "status_4xx_count_5m",
+    "status_5xx_count_5m",
+    "payload_risk_score",
+    "endpoint_risk_score",
+    "avg_request_interval",
+]
+
+LOG_COLUMNS = [
+    "timestamp",
+    "source_ip",
+    "user_id",
+    "event_type",
+    "endpoint",
+    "http_method",
+    "status_code",
+    *FEATURE_COLUMNS,
+    "label",
+]
+
+RECOMMENDED_ACTIONS = {
+    "normal": "No immediate action required. Continue monitoring.",
+    "port_scan": "Review exposed services, restrict unnecessary ports, and monitor repeated scanning sources.",
+    "brute_force": "Enable rate limiting, account lockout, MFA, and stronger authentication logging.",
+    "web_attack": "Validate inputs, use parameterized queries, output encoding, and WAF-style rules.",
+    "traffic_spike": "Apply rate limiting, autoscaling, queueing, and a DDoS protection strategy.",
+    "suspicious": "Review related logs, preserve evidence, and validate whether the pattern is expected in the lab.",
+}
 
 
-class SecurityEvent(BaseModel):
-    timestamp: str
-    source_ip: str
-    event_type: str
-    endpoint: str
-    status_code: int
-    user_id: str | None = None
-    http_method: str = "GET"
-    request_count_1m: int = 1
-    failed_login_count_5m: int = 0
-    unique_endpoints_5m: int = 1
-    unique_ports_1m: int = 1
-    status_4xx_count_5m: int = 0
-    status_5xx_count_5m: int = 0
-    payload_risk_score: float = 0.0
-    avg_request_interval: float = 60.0
-    user_agent: str = "lab-client"
-    payload_marker: str = "SIMULATED_NONE"
-    label: ThreatLabel | None = None
+class SimulationRequest(BaseModel):
+    scenario: str = Field(default="mixed")
+    count: int = Field(default=500, ge=1, le=10000)
+    replace: bool = Field(default=True)
 
 
-class DetectionRequest(BaseModel):
-    event: SecurityEvent
+class CommandResponse(BaseModel):
+    ok: bool
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
-class BatchDetectionRequest(BaseModel):
-    events: list[SecurityEvent] = Field(default_factory=list)
-
-
-class DetectionResponse(BaseModel):
-    is_threat: bool
-    threat_type: str
-    severity: str
-    confidence: float
-    recommended_action: str
-    evidence: dict[str, Any] | None = None
+class AdvisorResponse(BaseModel):
+    alert_id: str
+    mode: str
+    model: str | None = None
+    recommendation: dict[str, Any]

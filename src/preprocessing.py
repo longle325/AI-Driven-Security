@@ -1,58 +1,56 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Iterable
+from dataclasses import dataclass
 
+import joblib
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-from src.feature_engineering import add_temporal_features, normalize_event_record
-from src.io_utils import read_jsonl
-
-
-FEATURE_COLUMNS = [
-    "request_count_1m",
-    "failed_login_count_5m",
-    "unique_endpoints_5m",
-    "unique_ports_1m",
-    "status_4xx_count_5m",
-    "status_5xx_count_5m",
-    "payload_risk_score",
-    "avg_request_interval",
-    "endpoint_risk_score",
-    "method_encoded",
-    "status_code",
-    "event_type_encoded",
-    "hour",
-]
+from src.config import ensure_directories, settings
+from src.data_loader import normalize_dataframe, save_processed_dataset
+from src.feature_engineering import feature_matrix
 
 
-def events_to_dataframe(events: Iterable[dict]) -> pd.DataFrame:
-    normalized = [normalize_event_record(event) for event in events]
-    if not normalized:
-        return pd.DataFrame(columns=["label", *FEATURE_COLUMNS])
-    return pd.DataFrame(normalized)
+@dataclass
+class ProcessedData:
+    x_train: pd.DataFrame
+    x_test: pd.DataFrame
+    y_train: pd.Series
+    y_test: pd.Series
+    label_encoder: LabelEncoder
+    scaler: StandardScaler
 
 
-def preprocess_events(
-    events: pd.DataFrame | Iterable[dict],
-    include_labels: bool = False,
-) -> tuple[pd.DataFrame, pd.Series | None, pd.DataFrame]:
-    frame = events.copy() if isinstance(events, pd.DataFrame) else events_to_dataframe(events)
-    if frame.empty:
-        features = pd.DataFrame(columns=FEATURE_COLUMNS)
-        labels = pd.Series(dtype="object") if include_labels else None
-        return features, labels, frame
+def prepare_training_data(df: pd.DataFrame, test_size: float = 0.25, random_state: int = 42) -> ProcessedData:
+    ensure_directories()
+    clean = normalize_dataframe(df)
+    x = feature_matrix(clean)
+    labels = clean["label"].astype(str)
 
-    normalized_records = [normalize_event_record(record) for record in frame.to_dict("records")]
-    processed = add_temporal_features(pd.DataFrame(normalized_records))
+    label_encoder = LabelEncoder()
+    y = pd.Series(label_encoder.fit_transform(labels), name="label")
 
-    for column in FEATURE_COLUMNS:
-        if column not in processed:
-            processed[column] = 0
-    numeric = processed[FEATURE_COLUMNS].apply(pd.to_numeric, errors="coerce").fillna(0)
-    labels = processed["label"].fillna("normal") if include_labels and "label" in processed else None
-    return numeric, labels, processed
+    stratify = y if y.nunique() > 1 and y.value_counts().min() >= 2 else None
+    x_train, x_test, y_train, y_test = train_test_split(
+        x,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=stratify,
+    )
 
+    scaler = StandardScaler()
+    scaler.fit(x_train)
+    joblib.dump(label_encoder, settings.label_encoder_path)
+    joblib.dump(scaler, settings.scaler_path)
 
-def load_events_dataframe(path: Path) -> pd.DataFrame:
-    return events_to_dataframe(read_jsonl(path))
+    train_df = x_train.copy()
+    train_df["label"] = y_train.values
+    test_df = x_test.copy()
+    test_df["label"] = y_test.values
+    train_df.to_csv(settings.processed_data_dir / "train.csv", index=False)
+    test_df.to_csv(settings.processed_data_dir / "test.csv", index=False)
+    save_processed_dataset(clean)
+
+    return ProcessedData(x_train, x_test, y_train, y_test, label_encoder, scaler)

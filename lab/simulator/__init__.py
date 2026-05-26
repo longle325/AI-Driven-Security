@@ -1,1 +1,1 @@
-"""Safe synthetic event simulator."""
+"""Synthetic security event simulator."""

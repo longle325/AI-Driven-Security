@@ -1,1 +1,1 @@
-"""FastAPI service package."""
+"""FastAPI backend for the cyber defense lab."""

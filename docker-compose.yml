@@ -2,33 +2,56 @@ services:
   trainer:
     build: .
     command: python -m src.train_model
-    volumes:
+    environment: &lab_env
+      LLM_MODE: ${LLM_MODE:-fallback}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-low}
+      OPENAI_TEXT_VERBOSITY: ${OPENAI_TEXT_VERBOSITY:-low}
+    volumes: &lab_volumes
       - ./data:/app/data
       - ./models:/app/models
     restart: "no"
 
   simulator:
     build: .
-    command: python -m lab.simulator.simulate_events --scenario mixed --count 300 --output data/logs/events.jsonl --replace
+    command: python -m lab.simulator.simulate_events --scenario mixed --count 700 --output data/logs/events.jsonl --replace
     depends_on:
       trainer:
         condition: service_completed_successfully
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+    environment: *lab_env
+    volumes: *lab_volumes
     restart: "no"
 
   detector:
     build: .
     command: python -m src.detect --input data/logs/events.jsonl --output data/logs/alerts.jsonl
     depends_on:
-      trainer:
-        condition: service_completed_successfully
       simulator:
         condition: service_completed_successfully
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+    environment: *lab_env
+    volumes: *lab_volumes
+    restart: "no"
+
+  advisor:
+    build: .
+    command: python -m src.llm_advisor --alerts data/logs/alerts.jsonl --output data/logs/llm_recommendations.jsonl
+    depends_on:
+      detector:
+        condition: service_completed_successfully
+    environment: *lab_env
+    volumes: *lab_volumes
+    restart: "no"
+
+  exporter:
+    build: .
+    command: python -m src.evidence_exporter
+    depends_on:
+      advisor:
+        condition: service_completed_successfully
+    environment: *lab_env
+    volumes: *lab_volumes
     restart: "no"
 
   lab-web:
@@ -36,9 +59,8 @@ services:
     command: python -m lab.web_app.app
     ports:
       - "5001:5000"
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+    environment: *lab_env
+    volumes: *lab_volumes
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
@@ -53,30 +75,32 @@ services:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+    environment: *lab_env
+    volumes: *lab_volumes
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  dashboard:
-    build: .
-    command: streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true --browser.gatherUsageStats=false
+  frontend:
+    build:
+      context: ./frontend
     depends_on:
       detection-api:
         condition: service_healthy
-      detector:
+      exporter:
         condition: service_completed_successfully
     ports:
-      - "8501:8501"
+      - "8501:5173"
+    environment:
+      VITE_API_BASE_URL: http://127.0.0.1:8000
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10

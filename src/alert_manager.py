@@ -1,95 +1,109 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any
+from src.schemas import RECOMMENDED_ACTIONS
 
-from src.config import RECOMMENDED_ACTIONS
-
-
-def recommended_action_for(threat_type: str) -> str:
-    return RECOMMENDED_ACTIONS.get(threat_type, RECOMMENDED_ACTIONS["normal"])
+SEVERITY_RANK = {"informational": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 
-def _timestamp_token(timestamp: str | None) -> str:
-    if not timestamp:
-        return datetime.now(tz=UTC).strftime("%Y%m%d")
+def _num(event: dict | None, key: str) -> float:
+    if not event:
+        return 0.0
     try:
-        clean = timestamp.replace("Z", "+00:00")
-        return datetime.fromisoformat(clean).strftime("%Y%m%d")
-    except ValueError:
-        return datetime.now(tz=UTC).strftime("%Y%m%d")
-
-
-def _number(event: dict[str, Any], key: str, default: float = 0.0) -> float:
-    try:
-        return float(event.get(key, default) or default)
+        return float(event.get(key, 0) or 0)
     except (TypeError, ValueError):
-        return default
+        return 0.0
 
 
-def _has_strong_confirmed_signal(event: dict[str, Any], threat_type: str) -> bool:
+def _extreme_signal(event: dict | None, threat_type: str) -> bool:
     if threat_type == "brute_force":
-        return _number(event, "failed_login_count_5m") >= 12
+        return _num(event, "failed_login_count_5m") >= 38
     if threat_type == "port_scan":
-        return _number(event, "unique_ports_1m") >= 18
-    if threat_type == "traffic_spike":
-        return _number(event, "request_count_1m") >= 150 or _number(event, "status_5xx_count_5m") >= 4
+        return _num(event, "unique_ports_1m") >= 80
     if threat_type == "web_attack":
-        return _number(event, "payload_risk_score") >= 0.9 or (
-            event.get("endpoint") == "/admin" and _number(event, "status_4xx_count_5m") >= 4
-        )
+        return _num(event, "payload_risk_score") >= 0.96
+    if threat_type == "traffic_spike":
+        return _num(event, "request_count_1m") >= 380 or _num(event, "status_5xx_count_5m") >= 25
     return False
 
 
-def map_severity(
-    rule_result: dict[str, Any],
-    ml_result: dict[str, Any],
-    event: dict[str, Any] | None = None,
-) -> str:
-    ml_confidence = float(ml_result.get("confidence", 0.0) or 0.0)
+def choose_severity(rule_result: dict, ml_prediction: str, ml_confidence: float, event: dict | None = None) -> str:
     rule_threat = bool(rule_result.get("is_threat"))
-    ml_threat = bool(ml_result.get("is_threat"))
-    threat_type = str(rule_result.get("threat_type") or ml_result.get("predicted_label") or "normal")
+    rule_type = rule_result.get("threat_type", "normal")
 
-    if rule_threat and ml_threat and ml_confidence >= 0.9 and _has_strong_confirmed_signal(event or {}, threat_type):
+    if rule_threat and rule_type == ml_prediction and ml_confidence >= 0.90 and _extreme_signal(event, ml_prediction):
         return "critical"
-    if rule_result.get("severity") in {"critical", "high"} or (ml_threat and ml_confidence >= 0.85):
+    if rule_threat and rule_type == ml_prediction and ml_confidence >= 0.70:
         return "high"
-    if rule_threat or (ml_threat and ml_confidence >= 0.6):
+    if rule_threat and ml_confidence >= 0.78:
+        return "high"
+    if ml_prediction != "normal" and ml_confidence >= 0.82:
+        return "high"
+    if rule_threat or (ml_prediction != "normal" and ml_confidence >= 0.58):
         return "medium"
-    if ml_threat:
+    if ml_prediction != "normal":
         return "low"
     return "informational"
 
 
-def combine_results(
-    event: dict[str, Any],
-    rule_result: dict[str, Any],
-    ml_result: dict[str, Any],
-    event_index: int,
-    log_file: str = "data/logs/events.jsonl",
-) -> dict[str, Any]:
-    severity = map_severity(rule_result, ml_result, event)
+def choose_threat(rule_result: dict, ml_prediction: str, ml_confidence: float) -> str:
+    rule_type = rule_result.get("threat_type", "normal")
+    if rule_result.get("is_threat") and rule_type != "suspicious":
+        return str(rule_type)
+    if ml_prediction != "normal" and ml_confidence >= 0.45:
+        return ml_prediction
     if rule_result.get("is_threat"):
-        threat_type = str(rule_result.get("threat_type", "normal"))
-    elif ml_result.get("is_threat"):
-        threat_type = str(ml_result.get("predicted_label", "normal"))
-    else:
-        threat_type = "normal"
+        return str(rule_type)
+    return "normal"
 
-    timestamp = str(event.get("timestamp") or datetime.now(tz=UTC).isoformat())
+
+def build_alert(
+    index: int,
+    event: dict,
+    rule_result: dict,
+    ml_prediction: str,
+    ml_confidence: float,
+    evidence_ref: str,
+) -> dict | None:
+    threat_type = choose_threat(rule_result, ml_prediction, ml_confidence)
+    severity = choose_severity(rule_result, ml_prediction, ml_confidence, event)
+    if threat_type == "normal" and severity == "informational":
+        return None
+
+    important_features = {
+        key: event.get(key)
+        for key in (
+            "request_count_1m",
+            "failed_login_count_5m",
+            "unique_ports_1m",
+            "status_4xx_count_5m",
+            "status_5xx_count_5m",
+            "payload_risk_score",
+            "endpoint_risk_score",
+        )
+    }
+
     return {
-        "alert_id": f"ALERT-{_timestamp_token(timestamp)}-{event_index + 1:04d}",
-        "timestamp": timestamp,
+        "alert_id": f"ALERT-{index:04d}",
+        "timestamp": event.get("timestamp"),
+        "source_ip": event.get("source_ip"),
+        "user_id": event.get("user_id", ""),
+        "endpoint": event.get("endpoint"),
+        "event_type": event.get("event_type"),
         "threat_type": threat_type,
         "severity": severity,
-        "source_ip": event.get("source_ip", "unknown"),
-        "endpoint": event.get("endpoint", "unknown"),
-        "rule_result": rule_result,
-        "ml_result": ml_result,
-        "recommended_action": recommended_action_for(threat_type),
-        "evidence": {
-            "log_file": log_file,
-            "event_index": event_index,
-        },
+        "rule_prediction": rule_result.get("threat_type", "normal"),
+        "rule_reason": rule_result.get("reason", ""),
+        "rule_id": rule_result.get("rule_id", "NONE"),
+        "ml_prediction": ml_prediction,
+        "ml_confidence": round(float(ml_confidence), 4),
+        "recommended_action": RECOMMENDED_ACTIONS.get(threat_type, RECOMMENDED_ACTIONS["suspicious"]),
+        "evidence_ref": evidence_ref,
+        "important_features": important_features,
     }
+
+
+def severity_counts(alerts: list[dict]) -> dict[str, int]:
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "informational": 0}
+    for alert in alerts:
+        counts[str(alert.get("severity", "informational")).lower()] = counts.get(str(alert.get("severity", "informational")).lower(), 0) + 1
+    return counts

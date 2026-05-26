@@ -1,168 +1,96 @@
 # AI-Driven Cyber Defense Lab
 
-AI-Driven Cyber Defense Lab is a local, safe AI-SOC demo for Software and System Security. It generates synthetic security logs, detects threats with transparent rules and a Random Forest model, shows alerts on a Streamlit dashboard, and exports report-ready evidence.
+Presentation-ready mini SOC lab for an AI-driven cyber defense demo. The system generates safe synthetic security logs, detects threats with a rule baseline and a Random Forest model, creates structured alerts, explains incidents with an LLM Advisor, and exports report-ready evidence.
 
-The lab is defensive and educational only. It does not scan, attack, brute-force, exploit, or exfiltrate from any external target.
+The lab is defensive and educational only. It uses localhost, Docker networks, synthetic logs, public datasets, and harmless markers. It does not scan, brute-force, exploit, or attack real systems.
 
-## Architecture
+## Stack
 
-```text
-Lab Web App + Simulator
-        |
-        v
-JSONL Security Events
-        |
-        v
-Preprocessing + Feature Engineering
-        |
-        +--> Rule-Based Detector
-        |
-        +--> Random Forest ML Detector
-        |
-        v
-Alert Manager
-        |
-        v
-Dashboard + API + Evidence Export
-```
+- Backend: Python, FastAPI, Pandas, Scikit-learn, OpenAI SDK
+- Frontend: React, TypeScript, Vite, Recharts, Lucide icons
+- Lab source: Flask local web app plus synthetic simulator
+- Runtime: Docker Compose or local Python/Node
+- Default LLM mode: `fallback`, so the demo runs without an API key
 
-## Features
+## Model Choice
 
-- Safe Flask lab web app with `/`, `/login`, `/search`, `/profile`, `/admin`, `/health`.
-- Synthetic simulator for `normal`, `port_scan`, `brute_force`, `web_attack`, `traffic_spike`, and `mixed`.
-- JSONL log collection under `data/logs/events.jsonl`.
-- Preprocessing and model-ready feature engineering.
-- Rule baseline `R001` through `R006`.
-- Random Forest classifier with accuracy, precision, recall, F1-score, confusion matrix, and feature importance.
-- Alert severity, confidence, evidence pointers, and defensive recommendations.
-- FastAPI detection API.
-- Streamlit dashboard with overview, live alerts, model metrics, and evidence export.
-- Docker Compose local deployment.
+The default `.env.example` uses `OPENAI_MODEL=gpt-5.4-mini` for the optional OpenAI-backed Incident Advisor. This is the practical default for this project because the advisor task is constrained, structured, and latency-sensitive: it explains an existing alert and returns JSON recommendations. For lower cost, set `OPENAI_MODEL=gpt-5.4-nano`; for higher reasoning quality, set `OPENAI_MODEL=gpt-5.5`.
 
-## Setup
+Detection is still done by rules and the ML model. The LLM only explains alerts and recommends defensive next steps.
+
+## Quick Start With Docker
 
 ```bash
-make setup
-```
-
-This creates `.venv` and installs `requirements.txt`.
-
-## Core Demo Commands
-
-```bash
-make train
-make simulate-mixed
-make detect
-make export-evidence
-make dashboard
-```
-
-Open the dashboard at:
-
-```text
-http://localhost:8501
-```
-
-Run the lab web app:
-
-```bash
-make lab-web
-```
-
-Open:
-
-```text
-http://localhost:5001
-```
-
-Run the API:
-
-```bash
-make api
-```
-
-Open:
-
-```text
-http://localhost:8000/docs
-```
-
-## Docker
-
-```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-Services:
+Open:
 
-- `lab-web`: http://localhost:5001
-- `detection-api`: http://localhost:8000
-- `dashboard`: http://localhost:8501
-- `trainer`, `simulator`, `detector`: one-shot services that prepare model, logs, and alerts.
+- Dashboard: http://127.0.0.1:8501
+- API: http://127.0.0.1:8000/docs
+- Safe lab web app: http://127.0.0.1:5001
 
-## Scenario Commands
+If you do not add an API key, the LLM Advisor uses deterministic fallback recommendations.
+
+## Local Development
 
 ```bash
-make simulate-normal
-make simulate-bruteforce
-make simulate-portscan
-make simulate-webattack
-make simulate-spike
+make setup
+make frontend-install
+make demo
+make api
+```
+
+In a second terminal:
+
+```bash
+make frontend
+```
+
+Open the frontend at http://127.0.0.1:5173 for local Vite development.
+
+## Demo Flow
+
+```bash
 make simulate-mixed
+make train
+make detect
+make advise
+make export
 ```
 
-## Evidence Outputs
+The TypeScript dashboard also has command buttons for Logs, Train, Detect, Advise, Export, and Run Demo.
 
-Generated evidence is written to:
+## Outputs
 
-```text
-data/evidence/exports/
+- Logs: `data/logs/events.jsonl`, `data/logs/live_logs.csv`
+- Detection: `data/logs/detected_logs.csv`
+- Alerts: `data/logs/alerts.csv`, `data/logs/alerts.jsonl`
+- Recommendations: `data/logs/llm_recommendations.jsonl`
+- Model artifacts: `models/threat_model.joblib`, `models/metrics.json`, plots and reports
+- Evidence: `data/evidence/exports/`
+
+## Environment
+
+Create `.env` from `.env.example`:
+
+```bash
+LLM_MODE=fallback
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.4-mini
 ```
 
-Expected files:
+To enable OpenAI:
 
-- `alerts.csv`
-- `alerts.jsonl`
-- `metrics.json`
-- `classification_report.txt`
-- `confusion_matrix.png`
-- `feature_importance.csv`
-- `test_case_results.md`
-- `demo_summary.md`
+```bash
+LLM_MODE=openai
+OPENAI_API_KEY=sk-...
+```
 
 ## Tests
 
 ```bash
 make test
+cd frontend && npm run build
 ```
-
-The tests cover preprocessing, JSONL I/O, rule detection, alert severity mapping, CLI detection, simulator safety markers, evidence export, Flask logging, FastAPI detection, and dashboard data loading.
-
-## Threat Types
-
-- `normal`
-- `port_scan`
-- `brute_force`
-- `web_attack`
-- `traffic_spike`
-
-## Ethics and Legal Scope
-
-All events are synthetic or generated by the local lab app. The simulator writes harmless event records and safe markers such as `SIMULATED_WEB_ATTACK_MARKER`; it does not run real exploit payloads. Testing must stay on localhost, Docker networks, and generated datasets.
-
-See `docs/ethics_and_legal_scope.md`.
-
-## Limitations
-
-- The model is trained on synthetic data, so metrics show controlled lab performance, not production SOC accuracy.
-- The dashboard reads local JSONL files instead of a streaming SIEM.
-- Optional enterprise integrations such as Wazuh, ELK, Splunk, Zeek, and SHAP are future work.
-
-## Future Work
-
-- Real-time file watcher or queue-based detection.
-- CICIDS2017 or UNSW-NB15 ingestion.
-- Wazuh, ELK, or Splunk integration.
-- SHAP explanations.
-- Model drift monitoring.
-- Automated incident response playbooks.

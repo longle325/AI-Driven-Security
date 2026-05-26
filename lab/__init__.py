@@ -1,1 +1,1 @@
-"""Local lab applications and simulators."""
+"""Safe local lab components."""

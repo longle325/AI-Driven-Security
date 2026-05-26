@@ -1,114 +1,65 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
-from src.config import RULE_THRESHOLDS
+from src.config import settings
 
 
-SEVERITY_RANK = {
-    "informational": 0,
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
+@dataclass(frozen=True)
+class RuleDecision:
+    is_threat: bool
+    threat_type: str
+    severity: str
+    reason: str
+    detector: str = "rule_based"
+    rule_id: str = "NONE"
 
-
-def _number(event: dict[str, Any], key: str, default: float = 0.0) -> float:
-    try:
-        return float(event.get(key, default) or default)
-    except (TypeError, ValueError):
-        return default
-
-
-def detect_rule_threats(event: dict[str, Any]) -> dict[str, Any]:
-    matches: list[dict[str, str]] = []
-
-    if _number(event, "failed_login_count_5m") >= RULE_THRESHOLDS["failed_login_count_5m"]:
-        matches.append(
-            {
-                "rule_id": "R001",
-                "threat_type": "brute_force",
-                "severity": "high",
-                "reason": "failed_login_count_5m exceeded threshold",
-            }
-        )
-
-    if _number(event, "unique_ports_1m") >= RULE_THRESHOLDS["unique_ports_1m"]:
-        matches.append(
-            {
-                "rule_id": "R002",
-                "threat_type": "port_scan",
-                "severity": "high",
-                "reason": "unique_ports_1m exceeded threshold",
-            }
-        )
-
-    if _number(event, "request_count_1m") >= RULE_THRESHOLDS["request_count_1m"]:
-        matches.append(
-            {
-                "rule_id": "R003",
-                "threat_type": "traffic_spike",
-                "severity": "high",
-                "reason": "request_count_1m exceeded threshold",
-            }
-        )
-
-    marker = str(event.get("payload_marker", "")).upper()
-    if (
-        _number(event, "payload_risk_score") >= RULE_THRESHOLDS["payload_risk_score"]
-        or "SIMULATED_WEB_ATTACK" in marker
-        or "SIMULATED_SQLI" in marker
-        or "SIMULATED_XSS" in marker
-    ):
-        matches.append(
-            {
-                "rule_id": "R004",
-                "threat_type": "web_attack",
-                "severity": "high",
-                "reason": "suspicious simulated payload marker exists",
-            }
-        )
-
-    error_count = _number(event, "status_4xx_count_5m") + _number(event, "status_5xx_count_5m")
-    if error_count >= RULE_THRESHOLDS["status_error_count_5m"]:
-        matches.append(
-            {
-                "rule_id": "R005",
-                "threat_type": "web_attack",
-                "severity": "medium",
-                "reason": "too many 4xx/5xx responses in short time",
-            }
-        )
-
-    endpoint = str(event.get("endpoint", ""))
-    status_code = int(_number(event, "status_code", 200))
-    if endpoint == "/admin" and status_code in {401, 403} and _number(event, "status_4xx_count_5m") >= 3:
-        matches.append(
-            {
-                "rule_id": "R006",
-                "threat_type": "web_attack",
-                "severity": "high",
-                "reason": "repeated admin access failure",
-            }
-        )
-
-    if not matches:
+    def to_dict(self) -> dict[str, Any]:
         return {
-            "is_threat": False,
-            "threat_type": "normal",
-            "severity": "informational",
-            "reason": "no rule matched",
-            "matched_rules": [],
-            "detector": "rule_based",
+            "is_threat": self.is_threat,
+            "threat_type": self.threat_type,
+            "severity": self.severity,
+            "reason": self.reason,
+            "detector": self.detector,
+            "rule_id": self.rule_id,
         }
 
-    strongest = max(matches, key=lambda match: SEVERITY_RANK[match["severity"]])
-    return {
-        "is_threat": True,
-        "threat_type": strongest["threat_type"],
-        "severity": strongest["severity"],
-        "reason": strongest["reason"],
-        "matched_rules": matches,
-        "detector": "rule_based",
-    }
+
+def _num(event: dict, key: str) -> float:
+    try:
+        return float(event.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def evaluate_event(event: dict) -> RuleDecision:
+    failed = _num(event, "failed_login_count_5m")
+    ports = _num(event, "unique_ports_1m")
+    requests = _num(event, "request_count_1m")
+    payload = _num(event, "payload_risk_score")
+    errors = _num(event, "status_4xx_count_5m") + _num(event, "status_5xx_count_5m")
+    endpoint = str(event.get("endpoint", "")).lower()
+
+    if failed >= settings.failed_login_threshold:
+        severity = "critical" if failed >= settings.failed_login_threshold * 2 else "high"
+        return RuleDecision(True, "brute_force", severity, "failed_login_count_5m exceeded threshold", rule_id="R001")
+    if ports >= settings.unique_ports_threshold:
+        severity = "critical" if ports >= settings.unique_ports_threshold * 2 else "high"
+        return RuleDecision(True, "port_scan", severity, "unique_ports_1m exceeded threshold", rule_id="R002")
+    if requests >= settings.request_spike_threshold:
+        severity = "high" if requests >= settings.request_spike_threshold * 1.5 else "medium"
+        return RuleDecision(True, "traffic_spike", severity, "request_count_1m exceeded threshold", rule_id="R003")
+    if payload >= settings.payload_risk_threshold:
+        severity = "critical" if payload >= 0.9 else "high"
+        return RuleDecision(True, "web_attack", severity, "payload_risk_score exceeded threshold", rule_id="R004")
+    if errors >= settings.error_threshold:
+        return RuleDecision(True, "suspicious", "medium", "4xx/5xx error volume exceeded threshold", rule_id="R005")
+    if "admin" in endpoint and _num(event, "status_code") in (401, 403, 404):
+        return RuleDecision(True, "suspicious", "medium", "admin endpoint returned repeated failure status", rule_id="R006")
+
+    return RuleDecision(False, "normal", "informational", "no configured rule matched")
+
+
+def evaluate_events(events: list[dict]) -> list[dict]:
+    return [evaluate_event(event).to_dict() for event in events]

@@ -1,33 +1,37 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
-from lab.simulator.scenarios import generate_scenario_events
-from src.config import EVENTS_JSONL, ensure_project_dirs
-from src.io_utils import append_jsonl, write_jsonl
+import pandas as pd
+
+from lab.simulator.scenarios import SCENARIOS, generate_events
+from src.config import ensure_directories, settings
+from src.io_utils import write_jsonl
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate safe synthetic cyber-defense lab events.")
-    parser.add_argument("--scenario", choices=["normal", "port_scan", "brute_force", "web_attack", "traffic_spike", "mixed"], default="mixed")
-    parser.add_argument("--count", type=int, default=100)
-    parser.add_argument("--output", type=Path, default=EVENTS_JSONL)
-    parser.add_argument("--replace", action="store_true", help="Replace the output file instead of appending.")
-    parser.add_argument("--seed", type=int, default=42)
-    return parser
+def simulate(scenario: str = "mixed", count: int = 500, output: Path | None = None, replace: bool = True) -> list[dict]:
+    ensure_directories()
+    output_path = output or settings.events_jsonl
+    events = generate_events(scenario=scenario, count=count)
+    write_jsonl(output_path, events, append=not replace)
+
+    csv_path = settings.live_logs_csv
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(events).to_csv(csv_path, index=False)
+    return events
 
 
 def main() -> None:
-    args = build_parser().parse_args()
-    ensure_project_dirs()
-    events = generate_scenario_events(args.scenario, args.count, seed=args.seed)
-    if args.replace:
-        write_jsonl(args.output, events)
-    else:
-        append_jsonl(args.output, events)
-    print(json.dumps({"scenario": args.scenario, "events": len(events), "output": str(args.output)}, indent=2))
+    parser = argparse.ArgumentParser(description="Generate safe synthetic lab security events.")
+    parser.add_argument("--scenario", choices=SCENARIOS, default="mixed")
+    parser.add_argument("--count", type=int, default=500)
+    parser.add_argument("--output", type=Path, default=settings.events_jsonl)
+    parser.add_argument("--replace", action="store_true", default=True)
+    args = parser.parse_args()
+
+    events = simulate(args.scenario, args.count, args.output, args.replace)
+    print(f"Generated {len(events)} {args.scenario} events at {args.output}")
 
 
 if __name__ == "__main__":

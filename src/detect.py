@@ -1,117 +1,92 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
-from typing import Any
 
 import joblib
 import pandas as pd
 
-from src.alert_manager import combine_results
-from src.config import ALERTS_CSV, ALERTS_JSONL, EVENTS_JSONL, MODELS_DIR, ensure_project_dirs
-from src.io_utils import read_jsonl, write_csv, write_jsonl
-from src.preprocessing import FEATURE_COLUMNS, preprocess_events
-from src.rules import detect_rule_threats
+from src.alert_manager import build_alert
+from src.config import ensure_directories, settings
+from src.data_loader import load_file, normalize_dataframe
+from src.feature_engineering import feature_matrix
+from src.io_utils import write_jsonl
+from src.rules import evaluate_event
+from src.train_model import train_model
 
 
-def load_model(model_dir: Path = MODELS_DIR) -> Any | None:
-    model_path = model_dir / "threat_model.joblib"
-    if not model_path.exists():
-        return None
-    return joblib.load(model_path)
+def _load_model_assets():
+    if not settings.model_path.exists() or not settings.label_encoder_path.exists():
+        train_model()
+    model = joblib.load(settings.model_path)
+    label_encoder = joblib.load(settings.label_encoder_path)
+    return model, label_encoder
 
 
-def predict_ml(event: dict[str, Any], model: Any | None = None) -> dict[str, Any]:
-    if model is None:
-        return {
-            "is_threat": False,
-            "predicted_label": "normal",
-            "confidence": 0.0,
-            "top_features": [],
-            "detector": "ml_random_forest_unavailable",
+def run_detection(input_path: Path | None = None, output_path: Path | None = None) -> dict:
+    ensure_directories()
+    input_file = input_path or settings.events_jsonl
+    df = normalize_dataframe(load_file(input_file))
+    if df.empty:
+        return {"events": 0, "alerts": 0, "message": f"No input logs found at {input_file}"}
+
+    model, label_encoder = _load_model_assets()
+    probabilities = model.predict_proba(feature_matrix(df))
+    class_indexes = probabilities.argmax(axis=1)
+    ml_predictions = label_encoder.inverse_transform(class_indexes)
+    ml_confidences = probabilities.max(axis=1)
+
+    detected_rows: list[dict] = []
+    alerts: list[dict] = []
+    alert_index = 1
+
+    for row_index, (_, row) in enumerate(df.iterrows(), start=1):
+        event = row.to_dict()
+        rule_result = evaluate_event(event).to_dict()
+        ml_prediction = str(ml_predictions[row_index - 1])
+        ml_confidence = float(ml_confidences[row_index - 1])
+        detected = {
+            **event,
+            "rule_prediction": rule_result["threat_type"],
+            "rule_reason": rule_result["reason"],
+            "rule_id": rule_result["rule_id"],
+            "ml_prediction": ml_prediction,
+            "ml_confidence": round(ml_confidence, 4),
         }
+        detected_rows.append(detected)
 
-    features, _, _ = preprocess_events(pd.DataFrame([event]), include_labels=False)
-    predicted_label = str(model.predict(features)[0])
-    confidence = 0.0
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(features)[0]
-        confidence = float(max(probabilities))
+        alert = build_alert(alert_index, event, rule_result, ml_prediction, ml_confidence, f"{input_file}:{row_index}")
+        if alert:
+            alerts.append(alert)
+            alert_index += 1
 
-    top_features: list[str] = []
-    if hasattr(model, "feature_importances_"):
-        pairs = sorted(
-            zip(FEATURE_COLUMNS, model.feature_importances_, strict=False),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-        top_features = [feature for feature, _ in pairs[:5]]
+    pd.DataFrame(detected_rows).to_csv(settings.detected_logs_csv, index=False)
+    pd.DataFrame(alerts).to_csv(settings.alerts_csv, index=False)
+    write_jsonl(settings.alerts_jsonl, alerts)
+
+    if output_path:
+        if output_path.suffix.lower() == ".jsonl":
+            write_jsonl(output_path, alerts)
+        elif output_path.suffix.lower() == ".csv":
+            pd.DataFrame(alerts).to_csv(output_path, index=False)
 
     return {
-        "is_threat": predicted_label != "normal",
-        "predicted_label": predicted_label,
-        "confidence": round(confidence, 4),
-        "top_features": top_features,
-        "detector": "ml_random_forest",
+        "events": len(detected_rows),
+        "alerts": len(alerts),
+        "input": str(input_file),
+        "detected_logs": str(settings.detected_logs_csv),
+        "alerts_csv": str(settings.alerts_csv),
+        "alerts_jsonl": str(settings.alerts_jsonl),
     }
 
 
-def detect_event(
-    event: dict[str, Any],
-    event_index: int = 0,
-    model: Any | None = None,
-    log_file: str = "data/logs/events.jsonl",
-) -> dict[str, Any]:
-    rule_result = detect_rule_threats(event)
-    ml_result = predict_ml(event, model=model)
-
-    if not ml_result["is_threat"] and rule_result["is_threat"]:
-        ml_result = {
-            **ml_result,
-            "predicted_label": rule_result["threat_type"],
-            "is_threat": True,
-            "confidence": 0.55,
-        }
-
-    return combine_results(event, rule_result, ml_result, event_index=event_index, log_file=log_file)
-
-
-def run_detection(
-    input_path: Path = EVENTS_JSONL,
-    output_path: Path = ALERTS_JSONL,
-    model_dir: Path = MODELS_DIR,
-) -> list[dict[str, Any]]:
-    ensure_project_dirs()
-    events = read_jsonl(input_path)
-    model = load_model(model_dir)
-    alerts: list[dict[str, Any]] = []
-
-    for index, event in enumerate(events):
-        alert = detect_event(event, event_index=index, model=model, log_file=str(input_path))
-        if alert["severity"] != "informational":
-            alerts.append(alert)
-
-    write_jsonl(output_path, alerts)
-    csv_path = output_path.with_suffix(".csv")
-    write_csv(csv_path, alerts)
-    if output_path == ALERTS_JSONL:
-        write_csv(ALERTS_CSV, alerts)
-    return alerts
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run AI-SOC detection over JSONL events.")
-    parser.add_argument("--input", type=Path, default=EVENTS_JSONL)
-    parser.add_argument("--output", type=Path, default=ALERTS_JSONL)
-    parser.add_argument("--model-dir", type=Path, default=MODELS_DIR)
-    return parser
-
-
 def main() -> None:
-    args = build_parser().parse_args()
-    alerts = run_detection(args.input, args.output, args.model_dir)
-    print(json.dumps({"alerts": len(alerts), "output": str(args.output)}, indent=2))
+    parser = argparse.ArgumentParser(description="Run rule-based and ML detection over lab logs.")
+    parser.add_argument("--input", type=Path, default=settings.events_jsonl)
+    parser.add_argument("--output", type=Path, default=settings.alerts_jsonl)
+    args = parser.parse_args()
+    result = run_detection(args.input, args.output)
+    print(result)
 
 
 if __name__ == "__main__":
