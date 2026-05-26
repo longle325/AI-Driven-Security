@@ -1,0 +1,82 @@
+services:
+  trainer:
+    build: .
+    command: python -m src.train_model
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: "no"
+
+  simulator:
+    build: .
+    command: python -m lab.simulator.simulate_events --scenario mixed --count 300 --output data/logs/events.jsonl --replace
+    depends_on:
+      trainer:
+        condition: service_completed_successfully
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: "no"
+
+  detector:
+    build: .
+    command: python -m src.detect --input data/logs/events.jsonl --output data/logs/alerts.jsonl
+    depends_on:
+      trainer:
+        condition: service_completed_successfully
+      simulator:
+        condition: service_completed_successfully
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: "no"
+
+  lab-web:
+    build: .
+    command: python -m lab.web_app.app
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  detection-api:
+    build: .
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      trainer:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build: .
+    command: streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true --browser.gatherUsageStats=false
+    depends_on:
+      detection-api:
+        condition: service_healthy
+      detector:
+        condition: service_completed_successfully
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
