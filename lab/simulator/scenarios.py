@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from lab.simulator.safe_payloads import SAFE_ADMIN_PATHS, SAFE_WEB_MARKERS
 
-SCENARIOS = ["normal", "port_scan", "brute_force", "web_attack", "traffic_spike", "mixed"]
+SCENARIOS = ["normal", "botnet", "brute_force", "dos_ddos", "web_attack", "infiltration", "mixed"]
 PRIVATE_IPS = [f"10.0.{segment}.{host}" for segment in range(1, 5) for host in range(10, 80)]
 USERS = [f"user_{idx:02d}" for idx in range(1, 31)]
 ENDPOINTS = ["/", "/login", "/search", "/profile", "/api/orders", "/api/health", "/settings"]
@@ -56,22 +56,23 @@ def _brute_force(timestamp: datetime, rng: random.Random) -> dict:
     return event
 
 
-def _port_scan(timestamp: datetime, rng: random.Random) -> dict:
-    event = _base_event(timestamp, "port_scan", rng)
+def _botnet(timestamp: datetime, rng: random.Random) -> dict:
+    event = _base_event(timestamp, "botnet", rng)
     event.update(
         {
-            "source_ip": rng.choice(["10.0.3.90", "10.0.3.91", "10.0.3.92"]),
-            "event_type": "service_probe",
-            "endpoint": rng.choice(["/health", "/api/health", "/admin"]),
-            "http_method": "GET",
-            "status_code": rng.choice([200, 403, 404]),
-            "request_count_1m": rng.randint(55, 130),
-            "failed_login_count_5m": rng.randint(0, 2),
-            "unique_ports_1m": rng.randint(24, 96),
-            "status_4xx_count_5m": rng.randint(8, 35),
-            "payload_risk_score": round(rng.uniform(0.1, 0.35), 3),
-            "endpoint_risk_score": 0.7,
-            "avg_request_interval": round(rng.uniform(0.1, 0.9), 3),
+            "source_ip": rng.choice(["10.0.3.70", "10.0.3.71", "10.0.3.72"]),
+            "event_type": "c2_beacon",
+            "endpoint": rng.choice(["/api/health", "/cdn/checkin", "/telemetry"]),
+            "http_method": "POST",
+            "status_code": rng.choice([200, 204]),
+            "request_count_1m": rng.randint(32, 88),
+            "failed_login_count_5m": rng.randint(0, 1),
+            "unique_ports_1m": rng.randint(4, 11),
+            "status_4xx_count_5m": rng.randint(0, 4),
+            "status_5xx_count_5m": rng.randint(0, 2),
+            "payload_risk_score": round(rng.uniform(0.28, 0.62), 3),
+            "endpoint_risk_score": round(rng.uniform(0.62, 0.82), 3),
+            "avg_request_interval": round(rng.uniform(0.35, 1.1), 3),
         }
     )
     return event
@@ -101,12 +102,12 @@ def _web_attack(timestamp: datetime, rng: random.Random) -> dict:
     return event
 
 
-def _traffic_spike(timestamp: datetime, rng: random.Random) -> dict:
-    event = _base_event(timestamp, "traffic_spike", rng)
+def _dos_ddos(timestamp: datetime, rng: random.Random) -> dict:
+    event = _base_event(timestamp, "dos_ddos", rng)
     event.update(
         {
             "source_ip": rng.choice(["10.0.1.210", "10.0.1.211", "10.0.1.212", "10.0.1.213"]),
-            "event_type": "rate_spike",
+            "event_type": "service_flood",
             "endpoint": rng.choice(["/", "/api/orders", "/api/health"]),
             "http_method": "GET",
             "status_code": rng.choice([200, 429, 503]),
@@ -123,12 +124,35 @@ def _traffic_spike(timestamp: datetime, rng: random.Random) -> dict:
     return event
 
 
+def _infiltration(timestamp: datetime, rng: random.Random) -> dict:
+    event = _base_event(timestamp, "infiltration", rng)
+    event.update(
+        {
+            "source_ip": rng.choice(["10.0.4.90", "10.0.4.91", "10.0.4.92"]),
+            "event_type": "lateral_movement",
+            "endpoint": rng.choice(["/admin/audit", "/settings", "/api/orders/export"]),
+            "http_method": rng.choice(["GET", "POST"]),
+            "status_code": rng.choice([200, 403, 404]),
+            "request_count_1m": rng.randint(38, 115),
+            "failed_login_count_5m": rng.randint(0, 5),
+            "unique_ports_1m": rng.randint(8, 28),
+            "status_4xx_count_5m": rng.randint(8, 32),
+            "status_5xx_count_5m": rng.randint(0, 8),
+            "payload_risk_score": round(rng.uniform(0.38, 0.74), 3),
+            "endpoint_risk_score": round(rng.uniform(0.78, 0.96), 3),
+            "avg_request_interval": round(rng.uniform(0.4, 1.8), 3),
+        }
+    )
+    return event
+
+
 GENERATORS = {
     "normal": _normal,
+    "botnet": _botnet,
     "brute_force": _brute_force,
-    "port_scan": _port_scan,
     "web_attack": _web_attack,
-    "traffic_spike": _traffic_spike,
+    "dos_ddos": _dos_ddos,
+    "infiltration": _infiltration,
 }
 
 
@@ -140,11 +164,12 @@ def generate_events(scenario: str = "mixed", count: int = 500, seed: int = 42) -
     start = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=max(30, count // 8))
     events: list[dict] = []
     weights = [
-        ("normal", 0.58),
+        ("normal", 0.50),
+        ("botnet", 0.10),
         ("brute_force", 0.14),
-        ("port_scan", 0.10),
-        ("web_attack", 0.10),
-        ("traffic_spike", 0.08),
+        ("dos_ddos", 0.10),
+        ("web_attack", 0.09),
+        ("infiltration", 0.07),
     ]
     labels, probabilities = zip(*weights)
 

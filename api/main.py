@@ -17,6 +17,7 @@ from src.evidence_exporter import export_evidence
 from src.io_utils import read_jsonl
 from src.llm_advisor import advise_alert, generate_recommendations
 from src.schemas import AdvisorResponse, CommandResponse, SimulationRequest
+from src.streaming import process_next_stream_event, reset_stream_session, stream_status
 from src.train_model import train_model
 
 @asynccontextmanager
@@ -141,6 +142,23 @@ def rule_vs_ai() -> dict[str, Any]:
 def simulate_endpoint(request: SimulationRequest) -> CommandResponse:
     events = simulate(request.scenario, request.count, replace=request.replace)
     return CommandResponse(ok=True, message="Synthetic lab logs generated.", details={"events": len(events), "scenario": request.scenario})
+
+
+@app.get("/api/stream/status")
+def stream_status_endpoint() -> dict[str, Any]:
+    return stream_status()
+
+
+@app.post("/api/stream/reset", response_model=CommandResponse)
+def stream_reset_endpoint(request: SimulationRequest) -> CommandResponse:
+    result = reset_stream_session(request.scenario, request.count)
+    return CommandResponse(ok=True, message="Stream scenario reset.", details=result)
+
+
+@app.post("/api/stream/step", response_model=CommandResponse)
+def stream_step_endpoint() -> CommandResponse:
+    result = process_next_stream_event()
+    return CommandResponse(ok=True, message="Stream event processed.", details=result)
 
 
 @app.post("/api/train", response_model=CommandResponse)

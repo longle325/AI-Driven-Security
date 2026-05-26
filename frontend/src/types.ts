@@ -21,6 +21,8 @@ export interface Metrics {
   model?: string;
   samples?: number;
   labels?: string[];
+  dataset?: string;
+  trained_at?: string;
   accuracy?: number;
   precision?: number;
   recall?: number;
@@ -50,6 +52,7 @@ export interface LogEvent {
   rule_id?: string;
   ml_prediction?: string;
   ml_confidence?: number;
+  evidence_ref?: string;
 }
 
 export interface Alert {
@@ -108,4 +111,23 @@ export interface AdvisorResult {
 export interface EvidenceFile {
   name: string;
   size: number;
+}
+
+export interface CommandResponse<T = Record<string, unknown>> {
+  ok: boolean;
+  message: string;
+  details: T;
+}
+
+export interface StreamStatus {
+  total: number;
+  processed: number;
+  remaining: number;
+  done: boolean;
+}
+
+export interface StreamStepDetails extends StreamStatus {
+  event: LogEvent | null;
+  detected: LogEvent | null;
+  alert: Alert | null;
 }

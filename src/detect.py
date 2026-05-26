@@ -23,6 +23,28 @@ def _load_model_assets():
     return model, label_encoder
 
 
+def detect_event(event: dict, alert_index: int = 1, evidence_ref: str = "stream") -> dict:
+    model, label_encoder = _load_model_assets()
+    df = normalize_dataframe(pd.DataFrame([event]))
+    row = df.iloc[0].to_dict()
+    probabilities = model.predict_proba(feature_matrix(df))
+    class_index = probabilities.argmax(axis=1)[0]
+    ml_prediction = str(label_encoder.inverse_transform([class_index])[0])
+    ml_confidence = float(probabilities.max(axis=1)[0])
+    rule_result = evaluate_event(row).to_dict()
+    detected = {
+        **row,
+        "rule_prediction": rule_result["threat_type"],
+        "rule_reason": rule_result["reason"],
+        "rule_id": rule_result["rule_id"],
+        "ml_prediction": ml_prediction,
+        "ml_confidence": round(ml_confidence, 4),
+        "evidence_ref": evidence_ref,
+    }
+    alert = build_alert(alert_index, row, rule_result, ml_prediction, ml_confidence, evidence_ref)
+    return {"detected": detected, "alert": alert}
+
+
 def run_detection(input_path: Path | None = None, output_path: Path | None = None) -> dict:
     ensure_directories()
     input_file = input_path or settings.events_jsonl
@@ -52,6 +74,7 @@ def run_detection(input_path: Path | None = None, output_path: Path | None = Non
             "rule_id": rule_result["rule_id"],
             "ml_prediction": ml_prediction,
             "ml_confidence": round(ml_confidence, 4),
+            "evidence_ref": f"{input_file}:{row_index}",
         }
         detected_rows.append(detected)
 

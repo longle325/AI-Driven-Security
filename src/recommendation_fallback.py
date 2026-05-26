@@ -42,6 +42,20 @@ BASE_RECOMMENDATION = {
 
 
 THREAT_OVERRIDES = {
+    "botnet": {
+        "incident_summary": "A botnet or command-and-control style beaconing pattern was detected.",
+        "threat_explanation": "Botnet traffic often appears as repeated outbound check-ins or automated telemetry-like requests from a compromised host.",
+        "immediate_next_steps": [
+            "Review repeated outbound requests from the same source host.",
+            "Check whether the destination path and timing are expected for the lab app.",
+            "Preserve the event timing, source IP, endpoint, and model confidence as evidence.",
+        ],
+        "mitigation_actions": [
+            "Isolate the suspected host in the lab network.",
+            "Block known suspicious endpoints or indicators.",
+            "Add egress monitoring and beaconing detection rules.",
+        ],
+    },
     "brute_force": {
         "incident_summary": "A brute-force-like login pattern was detected against the login endpoint.",
         "threat_explanation": "Brute-force activity is repeated authentication failure that may indicate credential guessing.",
@@ -84,9 +98,9 @@ THREAT_OVERRIDES = {
             "Add WAF-style rules for high-risk markers.",
         ],
     },
-    "traffic_spike": {
-        "incident_summary": "A high-volume traffic spike was detected in the local lab logs.",
-        "threat_explanation": "Traffic spikes can degrade availability and may represent automated abuse or stress testing.",
+    "dos_ddos": {
+        "incident_summary": "A denial-of-service traffic pattern was detected in the local lab logs.",
+        "threat_explanation": "DoS/DDoS-like activity sends high request volume or error-inducing traffic that can reduce service availability.",
         "immediate_next_steps": [
             "Review request volume around the alert window.",
             "Check whether the source IP is a known local load-test generator.",
@@ -96,6 +110,20 @@ THREAT_OVERRIDES = {
             "Add rate limiting.",
             "Use queueing or autoscaling strategy in production designs.",
             "Improve observability for request volume anomalies.",
+        ],
+    },
+    "infiltration": {
+        "incident_summary": "An infiltration or lateral-movement-like pattern was detected.",
+        "threat_explanation": "Infiltration patterns involve suspicious access to sensitive endpoints, unusual movement, or post-compromise exploration.",
+        "immediate_next_steps": [
+            "Review the affected source IP and sensitive endpoint activity.",
+            "Check for repeated access to admin, export, or internal routes.",
+            "Preserve related logs before tuning or clearing the scenario.",
+        ],
+        "mitigation_actions": [
+            "Segment sensitive services.",
+            "Require stronger authentication for administrative routes.",
+            "Add correlation rules for lateral movement indicators.",
         ],
     },
 }

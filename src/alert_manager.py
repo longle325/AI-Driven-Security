@@ -15,14 +15,18 @@ def _num(event: dict | None, key: str) -> float:
 
 
 def _extreme_signal(event: dict | None, threat_type: str) -> bool:
+    if threat_type == "botnet":
+        return _num(event, "payload_risk_score") >= 0.55 and _num(event, "avg_request_interval") <= 1.0
     if threat_type == "brute_force":
         return _num(event, "failed_login_count_5m") >= 38
     if threat_type == "port_scan":
         return _num(event, "unique_ports_1m") >= 80
     if threat_type == "web_attack":
         return _num(event, "payload_risk_score") >= 0.96
-    if threat_type == "traffic_spike":
+    if threat_type in {"dos_ddos", "traffic_spike"}:
         return _num(event, "request_count_1m") >= 380 or _num(event, "status_5xx_count_5m") >= 25
+    if threat_type == "infiltration":
+        return _num(event, "endpoint_risk_score") >= 0.9 and _num(event, "unique_ports_1m") >= 20
     return False
 
 
@@ -49,7 +53,7 @@ def choose_threat(rule_result: dict, ml_prediction: str, ml_confidence: float) -
     rule_type = rule_result.get("threat_type", "normal")
     if rule_result.get("is_threat") and rule_type != "suspicious":
         return str(rule_type)
-    if ml_prediction != "normal" and ml_confidence >= 0.45:
+    if ml_prediction != "normal" and ml_confidence >= 0.72:
         return ml_prediction
     if rule_result.get("is_threat"):
         return str(rule_type)
@@ -65,9 +69,9 @@ def build_alert(
     evidence_ref: str,
 ) -> dict | None:
     threat_type = choose_threat(rule_result, ml_prediction, ml_confidence)
-    severity = choose_severity(rule_result, ml_prediction, ml_confidence, event)
-    if threat_type == "normal" and severity == "informational":
+    if threat_type == "normal":
         return None
+    severity = choose_severity(rule_result, ml_prediction, ml_confidence, event)
 
     important_features = {
         key: event.get(key)

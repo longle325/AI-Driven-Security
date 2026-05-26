@@ -51,7 +51,7 @@ def test_cicids_labels_and_flow_features_are_mapped_to_lab_schema():
     assert normalized.loc[0, "event_type"] == "network_flow"
 
 
-def test_cicids_sampler_keeps_only_supported_lab_labels(tmp_path):
+def test_sampler_keeps_only_ids2025_taxonomy_labels(tmp_path):
     source = tmp_path / "source.csv"
     output = tmp_path / "sample.csv"
     pd.DataFrame(
@@ -66,4 +66,4 @@ def test_cicids_sampler_keeps_only_supported_lab_labels(tmp_path):
     info = _sample_rows(source, output, per_label=1, chunksize=2)
 
     assert info["rows"] == 3
-    assert info["label_counts"] == {"normal": 1, "web_attack": 1, "port_scan": 1}
+    assert info["label_counts"] == {"normal": 1, "web_attack": 1, "infiltration": 1}

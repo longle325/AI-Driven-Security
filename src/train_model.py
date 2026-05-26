@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import joblib
 import matplotlib
@@ -20,6 +21,10 @@ from src.schemas import FEATURE_COLUMNS
 
 
 def _training_source() -> pd.DataFrame:
+    preferred = settings.raw_data_dir / "ids2025_training_sample.csv"
+    if preferred.exists():
+        return load_many([preferred])
+
     raw_candidates = sorted(settings.raw_data_dir.glob("*.csv")) + sorted(settings.raw_data_dir.glob("*.jsonl"))
     if raw_candidates:
         return load_many(raw_candidates)
@@ -27,7 +32,7 @@ def _training_source() -> pd.DataFrame:
     df = normalize_dataframe(pd.DataFrame(generate_events("mixed", 2400, seed=2026)))
     rng = np.random.default_rng(2026)
     noisy_indexes = rng.choice(df.index.to_numpy(), size=max(1, int(len(df) * 0.055)), replace=False)
-    labels = np.array(["normal", "port_scan", "brute_force", "web_attack", "traffic_spike"])
+    labels = np.array(["normal", "botnet", "brute_force", "dos_ddos", "web_attack", "infiltration"])
     for idx in noisy_indexes:
         current = df.at[idx, "label"]
         choices = labels[labels != current]
@@ -96,6 +101,8 @@ def train_model() -> dict:
         "model": "RandomForestClassifier",
         "samples": int(len(df)),
         "labels": labels,
+        "dataset": "prantokumar/ids-dataset-2025" if (settings.raw_data_dir / "ids2025_training_sample.csv").exists() else "synthetic_lab",
+        "trained_at": datetime.now(timezone.utc).isoformat(),
         "accuracy": round(float(accuracy_score(processed.y_test, predictions)), 4),
         "precision": round(float(precision), 4),
         "recall": round(float(recall), 4),

@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-THREAT_TYPES = ["normal", "port_scan", "brute_force", "web_attack", "traffic_spike"]
+THREAT_TYPES = ["normal", "botnet", "brute_force", "dos_ddos", "web_attack", "infiltration", "port_scan"]
 
 FEATURE_COLUMNS = [
     "request_count_1m",
@@ -31,10 +31,13 @@ LOG_COLUMNS = [
 
 RECOMMENDED_ACTIONS = {
     "normal": "No immediate action required. Continue monitoring.",
+    "botnet": "Isolate the suspected host, review outbound beaconing, block known command-and-control indicators, and preserve host/network evidence.",
     "port_scan": "Review exposed services, restrict unnecessary ports, and monitor repeated scanning sources.",
     "brute_force": "Enable rate limiting, account lockout, MFA, and stronger authentication logging.",
+    "dos_ddos": "Apply rate limiting, autoscaling, queueing, upstream filtering, and service protection controls.",
     "web_attack": "Validate inputs, use parameterized queries, output encoding, and WAF-style rules.",
     "traffic_spike": "Apply rate limiting, autoscaling, queueing, and a DDoS protection strategy.",
+    "infiltration": "Contain the affected segment, review lateral movement indicators, inspect authentication paths, and collect endpoint/network evidence.",
     "suspicious": "Review related logs, preserve evidence, and validate whether the pattern is expected in the lab.",
 }
 

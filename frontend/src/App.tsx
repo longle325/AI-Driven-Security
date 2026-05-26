@@ -6,21 +6,26 @@ import {
   Bot,
   BrainCircuit,
   CheckCircle2,
+  Cpu,
   Database,
   Download,
+  Eye,
   FileArchive,
   Filter,
   Gauge,
   GitCompareArrows,
   ListFilter,
   Loader2,
+  Pause,
   Play,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  StepForward,
   TerminalSquare
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -42,9 +47,9 @@ import {
   YAxis
 } from "recharts";
 import { api } from "./api";
-import type { AdvisorResult, Alert, EvidenceFile, LogEvent, MetricsPayload, RuleVsAi, Summary } from "./types";
+import type { AdvisorResult, Alert, EvidenceFile, LogEvent, MetricsPayload, RuleVsAi, StreamStatus, Summary } from "./types";
 
-type ViewId = "overview" | "logs" | "alerts" | "advisor" | "metrics" | "compare" | "evidence";
+type ViewId = "scenario" | "logs" | "alerts" | "advisor" | "metrics" | "compare" | "evidence";
 
 const EMPTY_SUMMARY: Summary = {
   total_logs: 0,
@@ -74,12 +79,19 @@ const EMPTY_RULE_AI: RuleVsAi = {
   examples: []
 };
 
+const EMPTY_STREAM: StreamStatus = {
+  total: 0,
+  processed: 0,
+  remaining: 0,
+  done: true
+};
+
 const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
-  { id: "overview", label: "Overview", icon: Gauge },
-  { id: "logs", label: "Live Logs", icon: Database },
-  { id: "alerts", label: "Threat Alerts", icon: ShieldAlert },
-  { id: "advisor", label: "LLM Advisor", icon: Bot },
-  { id: "metrics", label: "Model Metrics", icon: BarChart3 },
+  { id: "scenario", label: "Live Scenario", icon: Activity },
+  { id: "logs", label: "Log Stream", icon: Database },
+  { id: "alerts", label: "Incidents", icon: ShieldAlert },
+  { id: "advisor", label: "LLM Insight", icon: Bot },
+  { id: "metrics", label: "Model Registry", icon: BarChart3 },
   { id: "compare", label: "Rule vs AI", icon: GitCompareArrows },
   { id: "evidence", label: "Evidence", icon: FileArchive }
 ];
@@ -112,6 +124,14 @@ function formatNumber(value?: number) {
 
 function classForSeverity(severity: string) {
   return `severity severity-${severity.toLowerCase()}`;
+}
+
+function isAbnormal(row: LogEvent) {
+  return row.rule_prediction !== "normal" || (row.ml_prediction && row.ml_prediction !== "normal");
+}
+
+function classForPrediction(value?: string) {
+  return `prediction prediction-${String(value || "pending").replaceAll("_", "-").toLowerCase()}`;
 }
 
 function timeline(logs: LogEvent[]) {
@@ -290,6 +310,161 @@ function Overview({ summary, logs, alerts }: { summary: Summary; logs: LogEvent[
               { key: "ml_confidence", label: "ML", render: (row) => formatPct(Number(row.ml_confidence)) }
             ]}
           />
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioConsole({
+  summary,
+  detected,
+  alerts,
+  stream,
+  selectedRef,
+  onSelectRef,
+  onStep,
+  onReset,
+  auto,
+  onToggleAuto,
+  busy
+}: {
+  summary: Summary;
+  detected: LogEvent[];
+  alerts: Alert[];
+  stream: StreamStatus;
+  selectedRef: string | null;
+  onSelectRef: (ref: string) => void;
+  onStep: () => void;
+  onReset: () => void;
+  auto: boolean;
+  onToggleAuto: () => void;
+  busy: string | null;
+}) {
+  const latestAbnormal = [...detected].reverse().find(isAbnormal);
+  const selected = detected.find((item) => item.evidence_ref === selectedRef) || latestAbnormal || detected[detected.length - 1];
+  const selectedAlert = alerts.find((alert) => alert.evidence_ref === selected?.evidence_ref) || null;
+  const [insight, setInsight] = useState<AdvisorResult | null>(null);
+  const [insightBusy, setInsightBusy] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
+  const threatData = entries(summary.threat_distribution);
+  const streamRows = detected.slice(-34).reverse();
+
+  useEffect(() => {
+    setInsight(null);
+    setInsightError(null);
+  }, [selected?.evidence_ref]);
+
+  async function generateInsight() {
+    if (!selectedAlert) return;
+    setInsightBusy(true);
+    setInsightError(null);
+    try {
+      setInsight(await api.advisor(selectedAlert.alert_id));
+    } catch (err) {
+      setInsightError(err instanceof Error ? err.message : "Insight generation failed");
+    } finally {
+      setInsightBusy(false);
+    }
+  }
+
+  return (
+    <div className="scenario-layout">
+      <section className="mission-board">
+        <div>
+          <span>IDS2025 Live Scenario</span>
+          <strong>{formatNumber(stream.processed)} / {formatNumber(stream.total)} events processed</strong>
+        </div>
+        <div className="mission-actions">
+          <button onClick={onReset} disabled={!!busy}><RotateCcw size={16} />Reset</button>
+          <button onClick={onStep} disabled={!!busy || stream.done}><StepForward size={16} />Step</button>
+          <button className={auto ? "danger-button" : "primary-button"} onClick={onToggleAuto} disabled={!!busy && busy !== "stream"}>
+            {auto ? <Pause size={16} /> : <Play size={16} />}
+            {auto ? "Pause" : "Auto Stream"}
+          </button>
+        </div>
+        <div className="progress-rail"><i style={{ width: stream.total ? `${Math.min(100, (stream.processed / stream.total) * 100)}%` : "0%" }} /></div>
+      </section>
+
+      <div className="scenario-grid">
+        <Panel title="Live Log Stream" icon={Activity}>
+          <div className="stream-list">
+            {streamRows.length ? streamRows.map((row, index) => {
+              const ref = row.evidence_ref || `${row.timestamp}-${index}`;
+              const abnormal = isAbnormal(row);
+              return (
+                <button className={`stream-row ${abnormal ? "escalated" : ""} ${selected?.evidence_ref === row.evidence_ref ? "active" : ""}`} key={ref} onClick={() => row.evidence_ref && onSelectRef(row.evidence_ref)}>
+                  <span className="stream-time">{String(row.timestamp).replace("T", " ").slice(11, 19)}</span>
+                  <span className="stream-main">
+                    <strong>{row.source_ip}</strong>
+                    <small>{row.event_type} · {row.endpoint}</small>
+                  </span>
+                  <span className={classForPrediction(row.ml_prediction)}>{row.ml_prediction || "pending"}</span>
+                  <span className="confidence">{typeof row.ml_confidence === "number" ? formatPct(row.ml_confidence) : "n/a"}</span>
+                </button>
+              );
+            }) : <div className="empty-state">Reset scenario, then step through the event stream</div>}
+          </div>
+        </Panel>
+
+        <Panel title={`Incident Queue (${alerts.length})`} icon={ShieldAlert}>
+          <div className="incident-list">
+            {alerts.length ? alerts.slice(-18).reverse().map((alert) => (
+              <button className={`incident-card ${selectedAlert?.alert_id === alert.alert_id ? "active" : ""}`} key={alert.alert_id} onClick={() => onSelectRef(alert.evidence_ref)}>
+                <span className={classForSeverity(alert.severity)}>{alert.severity}</span>
+                <strong>{alert.threat_type}</strong>
+                <small>{alert.alert_id} · {alert.source_ip}</small>
+                <em>{alert.rule_reason}</em>
+              </button>
+            )) : <div className="empty-state">No abnormal event escalated yet</div>}
+          </div>
+        </Panel>
+
+        <Panel title="Investigation Panel" icon={Eye} action={selectedAlert ? <button className="primary-button" onClick={generateInsight} disabled={insightBusy}>{insightBusy ? <Loader2 className="spin" size={16} /> : <Bot size={16} />}Generate Insight</button> : null}>
+          {selected ? (
+            <div className="investigation">
+              <div className="evidence-header">
+                <span className={classForPrediction(selected.ml_prediction)}>{selected.ml_prediction || "pending"}</span>
+                <strong>{selected.evidence_ref || "stream event"}</strong>
+              </div>
+              <dl>
+                <dt>Source</dt><dd>{selected.source_ip}</dd>
+                <dt>Endpoint</dt><dd>{selected.endpoint}</dd>
+                <dt>Model</dt><dd>{selected.ml_prediction || "pending"} · {typeof selected.ml_confidence === "number" ? formatPct(selected.ml_confidence) : "n/a"}</dd>
+                <dt>Rule</dt><dd>{selected.rule_prediction || "pending"} · {selected.rule_reason || "no rule result"}</dd>
+              </dl>
+              <div className="feature-grid">
+                <span><b>{selected.request_count_1m}</b> req/min</span>
+                <span><b>{selected.failed_login_count_5m}</b> failed logins</span>
+                <span><b>{selected.unique_ports_1m}</b> ports</span>
+                <span><b>{Number(selected.payload_risk_score || 0).toFixed(2)}</b> payload risk</span>
+                <span><b>{Number(selected.endpoint_risk_score || 0).toFixed(2)}</b> endpoint risk</span>
+                <span><b>{Number(selected.avg_request_interval || 0).toFixed(2)}s</b> interval</span>
+              </div>
+              {insightError ? <div className="error-banner">{insightError}</div> : null}
+              {insight?.recommendation ? (
+                <div className="insight-box">
+                  <h3>{insight.recommendation.incident_summary || "Incident insight"}</h3>
+                  <p>{insight.recommendation.threat_explanation}</p>
+                  <ol>{listFromRecommendation(insight.recommendation.immediate_next_steps).slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ol>
+                </div>
+              ) : <div className="advisory-note">{selectedAlert ? "Click Generate Insight to ask the LLM for this incident." : "This event has not been escalated as an incident."}</div>}
+            </div>
+          ) : <div className="empty-state">No stream event selected</div>}
+        </Panel>
+      </div>
+
+      <div className="two-col">
+        <Panel title="Threats Detected In Current Run" icon={ListFilter}>
+          <DistributionList data={threatData} />
+        </Panel>
+        <Panel title="Loaded Model" icon={Cpu}>
+          <div className="model-card">
+            <span>Dataset</span><strong>{summary.metrics.dataset || "IDS2025 / synthetic fallback"}</strong>
+            <span>Model</span><strong>{summary.metrics.model || "not loaded"}</strong>
+            <span>F1-score</span><strong>{formatPct(summary.metrics.f1_score)}</strong>
+            <span>Labels</span><p>{summary.metrics.labels?.join(", ") || "n/a"}</p>
+          </div>
         </Panel>
       </div>
     </div>
@@ -619,35 +794,48 @@ function Evidence({ files }: { files: EvidenceFile[] }) {
 }
 
 export default function App() {
-  const [view, setView] = useState<ViewId>("overview");
+  const [view, setView] = useState<ViewId>("scenario");
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [logs, setLogs] = useState<LogEvent[]>([]);
+  const [detectedLogs, setDetectedLogs] = useState<LogEvent[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [metrics, setMetrics] = useState<MetricsPayload>(EMPTY_METRICS);
   const [ruleVsAi, setRuleVsAi] = useState<RuleVsAi>(EMPTY_RULE_AI);
   const [evidence, setEvidence] = useState<EvidenceFile[]>([]);
+  const [stream, setStream] = useState<StreamStatus>(EMPTY_STREAM);
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [selectedRef, setSelectedRef] = useState<string | null>(null);
+  const [autoStream, setAutoStream] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function loadAll() {
     setError(null);
     try {
-      const [summaryData, logsData, alertsData, metricsData, compareData, evidenceData] = await Promise.all([
+      const [summaryData, logsData, detectedData, alertsData, metricsData, compareData, evidenceData, streamData] = await Promise.all([
         api.summary(),
         api.logs(),
+        api.detected(),
         api.alerts(),
         api.metrics(),
         api.ruleVsAi(),
-        api.evidence()
+        api.evidence(),
+        api.streamStatus()
       ]);
       setSummary(summaryData);
       setLogs(logsData.items);
+      setDetectedLogs(detectedData.items);
       setAlerts(alertsData.items);
       setMetrics(metricsData);
       setRuleVsAi(compareData);
       setEvidence(evidenceData.items);
+      setStream(streamData);
       if (!selectedAlertId && alertsData.items[0]) setSelectedAlertId(alertsData.items[0].alert_id);
+      if (!selectedRef) {
+        const latestAlert = alertsData.items[alertsData.items.length - 1];
+        const latestDetected = detectedData.items[detectedData.items.length - 1];
+        setSelectedRef(latestAlert?.evidence_ref || latestDetected?.evidence_ref || null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load backend data");
     }
@@ -672,13 +860,47 @@ export default function App() {
 
   async function runDemo() {
     await runAction("demo", async () => {
-      await api.simulate("mixed", 700);
-      await api.train();
+      await api.streamReset("mixed", 120);
+      for (let index = 0; index < 30; index += 1) await api.streamStep();
       await api.detect();
       await api.generateAdvisor();
       await api.exportEvidence();
     });
   }
+
+  async function resetStream() {
+    setSelectedAlertId(null);
+    setSelectedRef(null);
+    setAutoStream(false);
+    await runAction("reset", () => api.streamReset("mixed", 120));
+  }
+
+  async function stepStream(reload = true) {
+    setBusy("stream");
+    setError(null);
+    try {
+      const response = await api.streamStep();
+      const details = response.details;
+      setStream({ total: details.total, processed: details.processed, remaining: details.remaining, done: details.done });
+      if (details.detected?.evidence_ref) setSelectedRef(details.detected.evidence_ref);
+      if (details.alert?.alert_id) setSelectedAlertId(details.alert.alert_id);
+      if (reload) await loadAll();
+      if (details.done) setAutoStream(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "stream failed");
+      setAutoStream(false);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!autoStream) return;
+    const timer = window.setInterval(() => {
+      void stepStream(true);
+    }, 750);
+    return () => window.clearInterval(timer);
+  }, [autoStream]);
 
   const pageTitle = useMemo(() => NAV_ITEMS.find((item) => item.id === view)?.label || "Overview", [view]);
 
@@ -717,9 +939,10 @@ export default function App() {
             <h1>{pageTitle}</h1>
           </div>
           <div className="command-strip">
-            <button onClick={() => void runAction("simulate", () => api.simulate("mixed", 500))} disabled={!!busy}><Play size={16} />Logs</button>
-            <button onClick={() => void runAction("train", api.train)} disabled={!!busy}><BrainCircuit size={16} />Train</button>
-            <button onClick={() => void runAction("detect", api.detect)} disabled={!!busy}><ShieldAlert size={16} />Detect</button>
+            <button onClick={() => void resetStream()} disabled={!!busy}><RotateCcw size={16} />Reset</button>
+            <button onClick={() => void stepStream()} disabled={!!busy || stream.done}><StepForward size={16} />Step</button>
+            <button className={autoStream ? "danger-button" : ""} onClick={() => setAutoStream((value) => !value)} disabled={!!busy && busy !== "stream"}>{autoStream ? <Pause size={16} /> : <Play size={16} />}{autoStream ? "Pause" : "Auto"}</button>
+            <button onClick={() => void runAction("detect", api.detect)} disabled={!!busy}><ShieldAlert size={16} />Re-detect</button>
             <button onClick={() => void runAction("advisor", api.generateAdvisor)} disabled={!!busy}><Bot size={16} />Advise</button>
             <button onClick={() => void runAction("export", api.exportEvidence)} disabled={!!busy}><Download size={16} />Export</button>
             <button className="primary-button" onClick={() => void runDemo()} disabled={!!busy}>{busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}Run Demo</button>
@@ -736,10 +959,32 @@ export default function App() {
           <span><strong>{summary.latest_alert_time ? summary.latest_alert_time.replace("T", " ").slice(0, 19) : "n/a"}</strong> latest</span>
         </section>
 
-        {view === "overview" ? <Overview summary={summary} logs={logs} alerts={alerts} /> : null}
+        {view === "scenario" ? (
+          <ScenarioConsole
+            summary={summary}
+            detected={detectedLogs}
+            alerts={alerts}
+            stream={stream}
+            selectedRef={selectedRef}
+            onSelectRef={setSelectedRef}
+            onStep={() => void stepStream()}
+            onReset={() => void resetStream()}
+            auto={autoStream}
+            onToggleAuto={() => setAutoStream((value) => !value)}
+            busy={busy}
+          />
+        ) : null}
         {view === "logs" ? <LiveLogs logs={logs} /> : null}
-        {view === "alerts" ? <ThreatAlerts alerts={alerts} selectedId={selectedAlertId} onSelect={setSelectedAlertId} /> : null}
-        {view === "advisor" ? <Advisor alerts={alerts} selectedId={selectedAlertId} onSelect={setSelectedAlertId} /> : null}
+        {view === "alerts" ? <ThreatAlerts alerts={alerts} selectedId={selectedAlertId} onSelect={(id) => {
+          setSelectedAlertId(id);
+          const alert = alerts.find((item) => item.alert_id === id);
+          if (alert?.evidence_ref) setSelectedRef(alert.evidence_ref);
+        }} /> : null}
+        {view === "advisor" ? <Advisor alerts={alerts} selectedId={selectedAlertId} onSelect={(id) => {
+          setSelectedAlertId(id);
+          const alert = alerts.find((item) => item.alert_id === id);
+          if (alert?.evidence_ref) setSelectedRef(alert.evidence_ref);
+        }} /> : null}
         {view === "metrics" ? <ModelMetrics payload={metrics} /> : null}
         {view === "compare" ? <RuleVsAiView ruleVsAi={ruleVsAi} /> : null}
         {view === "evidence" ? <Evidence files={evidence} /> : null}

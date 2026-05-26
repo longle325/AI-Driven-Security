@@ -54,16 +54,18 @@ Open the frontend at http://127.0.0.1:5173 for local Vite development.
 
 ```bash
 make download-data
-make simulate-mixed
 make train
+make simulate-mixed
 make detect
 make advise
 make export
 ```
 
-The TypeScript dashboard also has command buttons for Logs, Train, Detect, Advise, Export, and Run Demo.
+The TypeScript dashboard is a live SOC scenario console. Use Reset, Step, and Auto Stream to send time-series logs through the already-trained model; abnormal predictions are escalated into the Incident Queue. The UI does not train models. Training is an offline CLI/Docker trainer step.
 
-`make download-data` downloads the CICIDS2017 cleaned/preprocessed Kaggle dataset and writes a balanced local training sample to `data/raw/cicids2017_training_sample.csv`. The full Kaggle file remains outside git under Kaggle's local cache, with a pointer recorded in `data/raw/cicids2017_manifest.json`.
+`make download-data` downloads `prantokumar/ids-dataset-2025` from Kaggle and writes a balanced local training sample to `data/raw/ids2025_training_sample.csv`. The full Kaggle files remain outside git under Kaggle's local cache, with a pointer recorded in `data/raw/ids2025_manifest.json`.
+
+The IDS2025 taxonomy used by the model is `normal`, `botnet`, `brute_force`, `dos_ddos`, `web_attack`, and `infiltration`.
 
 ## Outputs
 
