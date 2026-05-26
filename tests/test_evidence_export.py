@@ -14,6 +14,14 @@ def test_simulator_generates_safe_labeled_events():
     assert all("SIMULATED_" in event["payload_marker"] for event in events)
 
 
+def test_mixed_simulator_keeps_normal_baseline_as_majority():
+    events = generate_scenario_events("mixed", count=500, seed=7)
+    labels = [event["label"] for event in events]
+
+    assert labels.count("normal") >= 250
+    assert {"port_scan", "brute_force", "web_attack", "traffic_spike"}.issubset(set(labels))
+
+
 def test_export_evidence_creates_report_files(tmp_path: Path):
     logs_dir = tmp_path / "logs"
     models_dir = tmp_path / "models"

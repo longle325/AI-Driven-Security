@@ -3,7 +3,20 @@ from __future__ import annotations
 import plotly.express as px
 import streamlit as st
 
-from dashboard.common import SEVERITY_COLORS, latest_value, load_alerts, load_events, load_metrics
+from dashboard.common import (
+    SEVERITY_COLORS,
+    THREAT_COLORS,
+    alert_worklist,
+    compute_soc_metrics,
+    incident_frame,
+    inject_console_theme,
+    metric_card,
+    percent,
+    quality_notices,
+    load_alerts,
+    load_events,
+    load_metrics,
+)
 
 
 st.set_page_config(
@@ -12,64 +25,78 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-      .block-container { padding-top: 1.5rem; }
-      [data-testid="stMetric"] {
-        border: 1px solid #d0d7de;
-        border-radius: 8px;
-        padding: 14px 16px;
-        background: #ffffff;
-      }
-      .pipeline {
-        border: 1px solid #d0d7de;
-        border-radius: 8px;
-        padding: 16px;
-        background: #f6f8fa;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        line-height: 1.8;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+inject_console_theme()
 
 events = load_events()
 alerts = load_alerts()
 metrics = load_metrics()
+soc = compute_soc_metrics(events, alerts, metrics)
+incidents = incident_frame(alerts)
 
-st.title("AI-Driven Cyber Defense Lab")
+st.markdown(
+    """
+    <section class="console-header">
+      <div class="console-title">AI-Driven Cyber Defense Lab</div>
+      <div class="console-subtitle">SOC analyst console for synthetic lab telemetry, model validation, evidence, and defensive recommendations.</div>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
 
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Events", len(events))
-col2.metric("Alerts", len(alerts))
-critical_high = 0 if alerts.empty else alerts["severity"].isin(["critical", "high"]).sum()
-col3.metric("High/Critical", int(critical_high))
-col4.metric("Macro F1", metrics.get("macro_f1", "n/a"))
-col5.metric("Last Detection", latest_value(alerts, "timestamp"))
+cards = [
+    metric_card("Telemetry", soc["event_count"], f"{soc['normal_count']} normal baseline events", "risk-ok"),
+    metric_card("Event Alerts", soc["alert_count"], f"{percent(soc['alert_rate'])} event-level detection rate", "risk-high" if soc["alert_rate"] > 0.5 else "risk-medium"),
+    metric_card("Incidents", soc["incident_count"], "Grouped by source, threat, and severity", "risk-medium"),
+    metric_card("Critical", soc["critical_count"], f"{percent(soc['escalation_rate'])} of generated alerts", "risk-critical" if soc["critical_count"] else "risk-ok"),
+    metric_card("Sources", soc["source_count"], "Distinct suspicious local IPs", "risk-medium" if soc["source_count"] else "risk-ok"),
+    metric_card("Macro F1", metrics.get("macro_f1", "n/a"), "Synthetic validation benchmark", "risk-ok"),
+]
+st.markdown(f"<div class='metric-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
 
-left, right = st.columns([1.1, 1])
+for notice in quality_notices(soc):
+    st.markdown(f"<div class='notice'>{notice}</div>", unsafe_allow_html=True)
+
+st.markdown(
+    f"""
+    <div class="pipeline-row">
+      <div class="pipeline-node"><b>Ingest</b>{soc['event_count']} JSONL records</div>
+      <div class="pipeline-node"><b>Engineer</b>13 model features</div>
+      <div class="pipeline-node"><b>Rules</b>R001-R006 transparent logic</div>
+      <div class="pipeline-node"><b>ML</b>Random Forest classifier</div>
+      <div class="pipeline-node"><b>Evidence</b>{soc['alert_count']} alert records</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+left, center, right = st.columns([1.15, 1, 1])
 with left:
-    st.subheader("Detection Pipeline")
-    st.markdown(
-        """
-        <div class="pipeline">
-        Lab Web App + Simulator -> JSONL Logs -> Preprocessing<br>
-        -> Rule Detector + Random Forest -> Alert Manager<br>
-        -> Streamlit Dashboard + Evidence Export
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.subheader("Latest Alerts")
-    if alerts.empty:
-        st.info("No alerts generated yet. Run `make simulate-mixed` and `make detect`.")
+    st.subheader("Incident Workload")
+    if incidents.empty:
+        st.info("No incidents available.")
     else:
-        st.dataframe(alerts.tail(10), use_container_width=True, hide_index=True)
+        st.dataframe(incidents.head(12), use_container_width=True, hide_index=True)
+
+with center:
+    st.subheader("Class Mix")
+    if events.empty or "label" not in events:
+        st.info("No event labels available.")
+    else:
+        class_counts = events["label"].value_counts().reset_index()
+        class_counts.columns = ["label", "count"]
+        fig = px.bar(
+            class_counts,
+            x="count",
+            y="label",
+            orientation="h",
+            color="label",
+            color_discrete_map=THREAT_COLORS,
+        )
+        fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=12, b=0), height=330)
+        st.plotly_chart(fig, use_container_width=True)
 
 with right:
-    st.subheader("Alerts by Severity")
+    st.subheader("Severity Mix")
     if alerts.empty:
         st.info("No severity data available.")
     else:
@@ -82,12 +109,12 @@ with right:
             color="severity",
             color_discrete_map=SEVERITY_COLORS,
         )
+        fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=12, b=0), height=330)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Alerts by Threat Type")
-    if alerts.empty:
-        st.info("No threat data available.")
-    else:
-        threat_counts = alerts["threat_type"].value_counts().reset_index()
-        threat_counts.columns = ["threat_type", "count"]
-        st.plotly_chart(px.pie(threat_counts, names="threat_type", values="count"), use_container_width=True)
+st.subheader("Alert Worklist")
+worklist = alert_worklist(alerts)
+if worklist.empty:
+    st.info("No alerts available.")
+else:
+    st.dataframe(worklist.tail(25), use_container_width=True, hide_index=True)

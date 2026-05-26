@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.common import load_alerts
+from dashboard.common import alert_worklist, incident_frame, inject_console_theme, load_alerts
 
 
+inject_console_theme()
 st.title("Live Alerts")
 alerts = load_alerts()
 
@@ -29,10 +30,17 @@ if query:
     ].astype(str).str.contains(query, case=False, na=False)
     filtered = filtered[mask]
 
-st.dataframe(filtered, use_container_width=True, hide_index=True)
+tab1, tab2 = st.tabs(["Incident Queue", "Event Alerts"])
+
+with tab1:
+    incidents = incident_frame(filtered)
+    st.dataframe(incidents, use_container_width=True, hide_index=True)
+
+with tab2:
+    st.dataframe(alert_worklist(filtered), use_container_width=True, hide_index=True)
 
 if not filtered.empty:
     selected = st.selectbox("Alert Details", filtered["alert_id"].tolist())
     record = filtered[filtered["alert_id"] == selected].iloc[0].to_dict()
     st.json(record)
-    st.info(record.get("recommended_action", "No recommendation available."))
+    st.markdown(f"<div class='notice'>{record.get('recommended_action', 'No recommendation available.')}</div>", unsafe_allow_html=True)

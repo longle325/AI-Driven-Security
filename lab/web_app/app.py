@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape
 import os
 from pathlib import Path
 from typing import Any
@@ -19,26 +20,45 @@ PAGE = """
     <meta charset="utf-8">
     <title>AI Cyber Defense Lab</title>
     <style>
-      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; background: #f5f7fb; color: #16202a; }
-      main { max-width: 920px; margin: auto; background: white; border: 1px solid #d8dee9; padding: 1.5rem; }
-      a { color: #005ea8; margin-right: 1rem; }
-      input { padding: .55rem; margin: .25rem 0; width: 18rem; }
-      button { padding: .55rem .9rem; background: #0b3d91; color: white; border: 0; }
-      code { background: #eef2f7; padding: .15rem .35rem; }
+      :root { --ink:#111b22; --muted:#60717d; --line:#cad5dc; --paper:#fff; --wash:#f2f6f7; --teal:#0f6f78; --red:#9f1d20; --amber:#a96f0c; }
+      * { box-sizing: border-box; }
+      body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: var(--wash); color: var(--ink); }
+      main { max-width: 1120px; margin: 28px auto; padding: 0 18px; }
+      .shell { border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overflow: hidden; }
+      header { padding: 18px 20px; border-left: 6px solid var(--teal); border-bottom: 1px solid var(--line); }
+      h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
+      .sub { margin-top: 4px; color: var(--muted); font-size: 14px; }
+      nav { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #f9fbfc; flex-wrap: wrap; }
+      nav a { color: #17323b; text-decoration: none; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: white; font-size: 14px; }
+      .content { padding: 20px; }
+      .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .panel { border: 1px solid var(--line); border-radius: 7px; padding: 14px; background: #fbfcfd; min-height: 120px; }
+      .panel b { display:block; font-size: 14px; margin-bottom: 6px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      input { padding: .65rem; margin: .25rem 0 .7rem; width: min(100%, 24rem); border: 1px solid var(--line); border-radius: 6px; }
+      button { padding: .65rem .95rem; background: var(--teal); color: white; border: 0; border-radius: 6px; font-weight: 700; }
+      code { background: #eef3f5; padding: .15rem .35rem; border-radius: 4px; }
+      .status { display:inline-block; border-radius: 999px; padding: 4px 9px; font-size: 12px; background: #e8f3ef; color: #245d42; border: 1px solid #b8d8ca; }
+      .danger { background: #fff0ee; color: var(--red); border-color: #f0b9b3; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
     <main>
-      <h1>AI-Driven Cyber Defense Lab</h1>
-      <nav>
-        <a href="/">Home</a>
-        <a href="/login">Login</a>
-        <a href="/search">Search</a>
-        <a href="/profile">Profile</a>
-        <a href="/admin">Admin</a>
-      </nav>
-      <hr>
-      {{ body|safe }}
+      <section class="shell">
+        <header>
+          <h1>AI-Driven Cyber Defense Lab</h1>
+          <div class="sub">Local telemetry source for controlled defensive monitoring.</div>
+        </header>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/login">Login</a>
+          <a href="/search">Search</a>
+          <a href="/profile">Profile</a>
+          <a href="/admin">Admin</a>
+        </nav>
+        <div class="content">{{ body|safe }}</div>
+      </section>
     </main>
   </body>
 </html>
@@ -115,19 +135,29 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/")
     def home():
         _write_event(app, _event("page_view", "/", 200))
-        return _page("<p>Local-only demo application that emits structured security events.</p>")
+        return _page(
+            """
+            <div class="grid">
+              <div class="panel"><b>Session Source</b><span class="status">local lab</span><p class="muted">Synthetic user activity is written to JSONL telemetry.</p></div>
+              <div class="panel"><b>Detection Surface</b><span class="status">structured logs</span><p class="muted">Login, search, profile, admin, and API events carry model features.</p></div>
+              <div class="panel"><b>Boundary</b><span class="status">safe only</span><p class="muted">All risky-looking behavior is represented by simulated markers.</p></div>
+            </div>
+            """
+        )
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "GET":
             return _page(
                 """
+                <div class="panel">
                 <form method="post">
                   <label>Username<br><input name="username" value="demo"></label><br>
                   <label>Password<br><input name="password" type="password"></label><br>
                   <button type="submit">Sign in</button>
                 </form>
-                <p>Demo success credential: <code>demo / demo-pass</code></p>
+                <p class="muted">Success credential: <code>demo / demo-pass</code></p>
+                </div>
                 """
             )
 
@@ -135,7 +165,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         password = request.form.get("password", "")
         if username == "demo" and password == "demo-pass":
             _write_event(app, _event("login_success", "/login", 200, user_id="demo"))
-            return _page("<p>Login success. This is synthetic lab behavior.</p>")
+            return _page("<div class='panel'><span class='status'>login_success</span><p>Authenticated synthetic lab user.</p></div>")
 
         _write_event(
             app,
@@ -151,7 +181,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 avg_request_interval=1.2,
             ),
         )
-        return _page("<p>Login failed. Event written for defensive detection.</p>"), 401
+        return _page("<div class='panel'><span class='status danger'>login_failed</span><p>Failed login event recorded for detection.</p></div>"), 401
 
     @app.get("/search")
     def search():
@@ -172,18 +202,37 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 status_4xx_count_5m=3 if label == "web_attack" else 0,
             ),
         )
-        return _page(f"<p>Search query recorded: <code>{query}</code></p>"), status
+        return _page(
+            f"""
+            <div class="panel">
+              <form method="get">
+                <label>Search query<br><input name="q" value="{escape(query)}"></label><br>
+                <button type="submit">Run Search</button>
+              </form>
+              <p><span class="status {'danger' if label == 'web_attack' else ''}">{label}</span></p>
+              <p class="muted">Recorded query: <code>{escape(query)}</code></p>
+            </div>
+            """
+        ), status
 
     @app.get("/profile")
     def profile():
         _write_event(app, _event("page_view", "/profile", 200))
-        return _page("<p>Profile page for a synthetic lab user.</p>")
+        return _page(
+            """
+            <div class="grid">
+              <div class="panel"><b>User</b><p>lab_user</p><p class="muted">Synthetic identity only.</p></div>
+              <div class="panel"><b>Role</b><p>student-analyst</p><p class="muted">No real account data.</p></div>
+              <div class="panel"><b>Session</b><span class="status">normal</span><p class="muted">Profile view event recorded.</p></div>
+            </div>
+            """
+        )
 
     @app.get("/admin")
     def admin():
         if request.headers.get("X-Lab-Admin") == "true":
             _write_event(app, _event("admin_access", "/admin", 200))
-            return _page("<p>Admin lab page.</p>")
+            return _page("<div class='panel'><span class='status'>admin_access</span><p>Admin lab page.</p></div>")
 
         _write_event(
             app,
@@ -195,7 +244,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 status_4xx_count_5m=4,
             ),
         )
-        return _page("<p>Admin access denied. Defensive event generated.</p>"), 403
+        return _page("<div class='panel'><span class='status danger'>admin_access_denied</span><p>Denied admin access event recorded.</p></div>"), 403
 
     @app.post("/api/events")
     def api_event():

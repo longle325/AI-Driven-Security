@@ -20,12 +20,38 @@ def _timestamp_token(timestamp: str | None) -> str:
         return datetime.now(tz=UTC).strftime("%Y%m%d")
 
 
-def map_severity(rule_result: dict[str, Any], ml_result: dict[str, Any]) -> str:
+def _number(event: dict[str, Any], key: str, default: float = 0.0) -> float:
+    try:
+        return float(event.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _has_strong_confirmed_signal(event: dict[str, Any], threat_type: str) -> bool:
+    if threat_type == "brute_force":
+        return _number(event, "failed_login_count_5m") >= 12
+    if threat_type == "port_scan":
+        return _number(event, "unique_ports_1m") >= 18
+    if threat_type == "traffic_spike":
+        return _number(event, "request_count_1m") >= 150 or _number(event, "status_5xx_count_5m") >= 4
+    if threat_type == "web_attack":
+        return _number(event, "payload_risk_score") >= 0.9 or (
+            event.get("endpoint") == "/admin" and _number(event, "status_4xx_count_5m") >= 4
+        )
+    return False
+
+
+def map_severity(
+    rule_result: dict[str, Any],
+    ml_result: dict[str, Any],
+    event: dict[str, Any] | None = None,
+) -> str:
     ml_confidence = float(ml_result.get("confidence", 0.0) or 0.0)
     rule_threat = bool(rule_result.get("is_threat"))
     ml_threat = bool(ml_result.get("is_threat"))
+    threat_type = str(rule_result.get("threat_type") or ml_result.get("predicted_label") or "normal")
 
-    if rule_threat and ml_threat and ml_confidence >= 0.85:
+    if rule_threat and ml_threat and ml_confidence >= 0.9 and _has_strong_confirmed_signal(event or {}, threat_type):
         return "critical"
     if rule_result.get("severity") in {"critical", "high"} or (ml_threat and ml_confidence >= 0.85):
         return "high"
@@ -43,7 +69,7 @@ def combine_results(
     event_index: int,
     log_file: str = "data/logs/events.jsonl",
 ) -> dict[str, Any]:
-    severity = map_severity(rule_result, ml_result)
+    severity = map_severity(rule_result, ml_result, event)
     if rule_result.get("is_threat"):
         threat_type = str(rule_result.get("threat_type", "normal"))
     elif ml_result.get("is_threat"):

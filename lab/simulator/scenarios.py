@@ -126,8 +126,10 @@ def generate_scenario_events(scenario: str, count: int, seed: int = 42) -> list[
     rng = random.Random(seed)
     base_time = datetime.now(tz=UTC).replace(microsecond=0)
     events: list[dict[str, Any]] = []
+    mixed_labels = ["normal", "port_scan", "brute_force", "web_attack", "traffic_spike"]
+    mixed_weights = [0.62, 0.09, 0.11, 0.1, 0.08]
     for index in range(count):
-        label = rng.choice(LABELS) if scenario == "mixed" else scenario
+        label = rng.choices(mixed_labels, weights=mixed_weights, k=1)[0] if scenario == "mixed" else scenario
         events.append(GENERATORS[label](index, base_time, rng))
     return events
 
