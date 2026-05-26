@@ -53,6 +53,7 @@ Open the frontend at http://127.0.0.1:5173 for local Vite development.
 ## Demo Flow
 
 ```bash
+make download-data
 make simulate-mixed
 make train
 make detect
@@ -61,6 +62,8 @@ make export
 ```
 
 The TypeScript dashboard also has command buttons for Logs, Train, Detect, Advise, Export, and Run Demo.
+
+`make download-data` downloads the CICIDS2017 cleaned/preprocessed Kaggle dataset and writes a balanced local training sample to `data/raw/cicids2017_training_sample.csv`. The full Kaggle file remains outside git under Kaggle's local cache, with a pointer recorded in `data/raw/cicids2017_manifest.json`.
 
 ## Outputs
 

@@ -3,7 +3,7 @@ VENV := .venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 
-.PHONY: setup frontend-install train evaluate simulate simulate-mixed detect advise export api lab-web frontend test demo docker-up docker-down clean
+.PHONY: setup frontend-install download-data train evaluate simulate simulate-mixed detect advise export api lab-web frontend test demo docker-up docker-down clean
 
 setup:
 	$(PYTHON) -m venv $(VENV)
@@ -12,6 +12,9 @@ setup:
 
 frontend-install:
 	cd frontend && npm install
+
+download-data:
+	$(PY) -m src.download_dataset --per-label 12000
 
 train:
 	$(PY) -m src.train_model
