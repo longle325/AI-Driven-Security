@@ -151,12 +151,10 @@ function Stat({
 
 function Panel({
   title,
-  eyebrow,
   children,
   action
 }: {
   title: string;
-  eyebrow?: string;
   children: React.ReactNode;
   action?: React.ReactNode;
 }) {
@@ -164,7 +162,6 @@ function Panel({
     <section className="panel">
       <header className="panel-head">
         <div>
-          {eyebrow ? <span>{eyebrow}</span> : null}
           <h2>{title}</h2>
         </div>
         {action}
@@ -390,7 +387,6 @@ function App() {
         <div className="runway-meta">
           <span>{stream.done ? "complete" : "streaming"}</span>
           <span>API {api.base.replace("http://", "")}</span>
-          <span>LLM {summary.llm.mode}</span>
         </div>
       </section>
 
@@ -402,7 +398,7 @@ function App() {
       </section>
 
       <section className="workbench">
-        <Panel title="Live Events" eyebrow="stream">
+        <Panel title="Live Events">
           <div className="event-stream">
             {recentStream.length ? recentStream.map((row, index) => {
               const ref = row.evidence_ref || `${row.timestamp}-${index}`;
@@ -423,7 +419,6 @@ function App() {
 
         <Panel
           title="AI Detection Focus"
-          eyebrow="selected log"
           action={selectedAlert ? <span className={severityClass(selectedAlert.severity)}>{selectedAlert.severity}</span> : null}
         >
           {focusEvent ? (
@@ -464,7 +459,6 @@ function App() {
 
         <Panel
           title="Insight"
-          eyebrow="LLM / fallback advisor"
           action={<button className="primary mini" onClick={() => void generateInsight()} disabled={!selectedAlert || insightBusy}>{insightBusy ? <Loader2 className="spin" size={15} /> : <Bot size={15} />}Generate</button>}
         >
           <div className="insight-panel">
@@ -495,7 +489,7 @@ function App() {
       </section>
 
       <section className="lower-grid">
-        <Panel title="Incident Queue" eyebrow="latest escalations">
+        <Panel title="Incident Queue">
           <div className="incident-stack">
             {recentAlerts.length ? recentAlerts.map((alert) => (
               <button className={`incident-row ${selectedAlert?.alert_id === alert.alert_id ? "active" : ""}`} key={alert.alert_id} onClick={() => {
@@ -512,7 +506,7 @@ function App() {
           </div>
         </Panel>
 
-        <Panel title="Detection Timeline" eyebrow="normal vs threat">
+        <Panel title="Detection Timeline">
           <div className="chart-box">
             <ResponsiveContainer>
               <AreaChart data={timeline}>
@@ -537,7 +531,7 @@ function App() {
           </div>
         </Panel>
 
-        <Panel title="Threat Mix" eyebrow="current run">
+        <Panel title="Threat Mix">
           <ThreatBars data={threatData} />
           <div className="chart-box short">
             <ResponsiveContainer>
