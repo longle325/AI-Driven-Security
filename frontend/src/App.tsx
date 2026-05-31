@@ -385,7 +385,7 @@ function App() {
           <i style={{ width: `${progress}%` }} />
         </div>
         <div className="runway-meta">
-          <span>{stream.done ? "complete" : "streaming"}</span>
+          <span>{stream.done ? "complete" : "active"}</span>
           <span>API {api.base.replace("http://", "")}</span>
         </div>
       </section>
