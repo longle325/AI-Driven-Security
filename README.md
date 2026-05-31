@@ -61,7 +61,7 @@ make advise
 make export
 ```
 
-The TypeScript dashboard is a live SOC scenario console. Use Reset, Step, and Auto Stream to send time-series logs through the already-trained model; abnormal predictions are escalated into the Incident Queue. The UI does not train models. Training is an offline CLI/Docker trainer step.
+Dashboard hiển thị đúng luồng SOC live scenario: log time-series xuất hiện trong Live Log Stream, event bất thường được đưa vào Incident Queue, Investigation Panel hiển thị source, endpoint, rule reason, model prediction, confidence và các feature quan trọng. Người xem có thể bấm Generate Insight để LLM hoặc fallback advisor giải thích incident và đề xuất next steps. UI không train model; training là bước offline CLI/Docker trainer step.
 
 `make download-data` downloads `prantokumar/ids-dataset-2025` from Kaggle and writes a balanced local training sample to `data/raw/ids2025_training_sample.csv`. The full Kaggle files remain outside git under Kaggle's local cache, with a pointer recorded in `data/raw/ids2025_manifest.json`.
 

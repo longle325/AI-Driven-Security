@@ -10,4 +10,4 @@
 | LLM Advisor | No API key | Fallback JSON recommendation created |
 | LLM Advisor | OpenAI mode with key | OpenAI JSON recommendation or fallback-on-error |
 | Evidence | Export | Report files appear in `data/evidence/exports` |
-| Frontend | Load dashboard | Overview, tables, charts, filters, advisor, and evidence pages render |
+| Frontend | Load dashboard | SOC live scenario renders with Live Log Stream, Incident Queue, Investigation Panel, Generate Insight action, and insight placeholder |
