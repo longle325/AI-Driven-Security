@@ -137,8 +137,7 @@ button.mini {
 .panel-head span,
 .runway span,
 .stat span,
-.focus-card span,
-.meta-footer span {
+.focus-card span {
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -686,27 +685,6 @@ h1 {
 
 .empty.small {
   min-height: 100px;
-}
-
-.meta-footer {
-  min-height: 42px;
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  color: var(--muted);
-}
-
-.meta-footer span {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 10px;
-  background: rgba(13, 20, 32, 0.75);
 }
 
 @media (max-width: 1120px) {

@@ -3,8 +3,6 @@ import {
   AlertTriangle,
   Bot,
   BrainCircuit,
-  Database,
-  Download,
   Loader2,
   Pause,
   Play,
@@ -537,11 +535,6 @@ function App() {
         </Panel>
       </section>
 
-      <footer className="meta-footer">
-        <span><Database size={14} />{summary.metrics.dataset || "IDS2025"}</span>
-        <span><BrainCircuit size={14} />{summary.metrics.model || "RandomForestClassifier"}</span>
-        <span><Download size={14} />Evidence export available from backend</span>
-      </footer>
     </main>
   );
 }
