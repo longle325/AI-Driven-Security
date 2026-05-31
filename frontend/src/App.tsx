@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Bot,
   BrainCircuit,
-  CheckCircle2,
   Database,
   Download,
   Loader2,
@@ -394,7 +393,6 @@ function App() {
         <Stat label="Logs analyzed" value={formatNumber(runDetected.length)} icon={BrainCircuit} tone="good" />
         <Stat label="Incidents" value={formatNumber(runAlerts.length)} icon={ShieldAlert} tone={runAlerts.length ? "warn" : "neutral"} />
         <Stat label="Threat rate" value={formatPct(threatRate)} icon={Zap} tone="warn" />
-        <Stat label="Model F1" value={formatPct(summary.metrics.f1_score)} icon={CheckCircle2} tone="good" />
       </section>
 
       <section className="workbench">
@@ -462,14 +460,6 @@ function App() {
           action={<button className="primary mini" onClick={() => void generateInsight()} disabled={!selectedAlert || insightBusy}>{insightBusy ? <Loader2 className="spin" size={15} /> : <Bot size={15} />}Generate</button>}
         >
           <div className="insight-panel">
-            {selectedAlert ? (
-              <div className="incident-brief">
-                <span>{selectedAlert.alert_id}</span>
-                <strong>{selectedAlert.threat_type}</strong>
-                <p>{selectedAlert.recommended_action}</p>
-              </div>
-            ) : <div className="empty small">No incident selected</div>}
-
             {insight?.recommendation ? (
               <div className="recommendation-flow">
                 <h3>{insight.recommendation.incident_summary || "Incident insight"}</h3>

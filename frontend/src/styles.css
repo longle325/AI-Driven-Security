@@ -232,7 +232,7 @@ h1 {
 .stat-grid {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -550,39 +550,14 @@ h1 {
   min-height: 548px;
   padding: 14px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  grid-template-rows: minmax(0, 1fr);
 }
 
-.incident-brief,
 .recommendation-flow,
 .advisor-placeholder {
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   background: #0a111c;
-}
-
-.incident-brief {
-  padding: 13px;
-}
-
-.incident-brief span {
-  color: var(--muted);
-  font: 12px "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
-}
-
-.incident-brief strong {
-  display: block;
-  margin-top: 7px;
-  font-size: 24px;
-  text-transform: uppercase;
-}
-
-.incident-brief p {
-  margin-top: 10px;
-  color: var(--muted);
-  line-height: 1.45;
-  font-size: 13px;
 }
 
 .recommendation-flow {
