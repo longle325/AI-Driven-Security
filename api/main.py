@@ -40,7 +40,10 @@ app.add_middleware(
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return pd.read_csv(path).fillna("").to_dict(orient="records")
+    try:
+        return pd.read_csv(path).fillna("").to_dict(orient="records")
+    except pd.errors.EmptyDataError:
+        return []
 
 
 def _load_metrics() -> dict[str, Any]:

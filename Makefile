@@ -3,7 +3,7 @@ VENV := .venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 
-.PHONY: setup frontend-install download-data train evaluate simulate simulate-mixed detect advise export api lab-web frontend test demo docker-up docker-down clean
+.PHONY: setup frontend-install download-data train evaluate benchmark simulate simulate-mixed detect advise export api lab-web frontend test demo docker-up docker-down clean
 
 setup:
 	$(PYTHON) -m venv $(VENV)
@@ -21,6 +21,9 @@ train:
 
 evaluate:
 	$(PY) -m src.evaluate_model
+
+benchmark:
+	$(PY) -m src.benchmark_detectors
 
 simulate:
 	$(PY) -m lab.simulator.simulate_events --scenario mixed --count 500 --replace
